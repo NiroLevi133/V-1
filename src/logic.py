@@ -1,88 +1,117 @@
-# logic.py – התאמות טלפונים וטעינת קבצים
-"""שדרוג אלגוריתם התאמת השמות (גרסה 2025‑07‑22)
--------------------------------------------------
-* חיזוק נורמליזציה (הסרת '|', '/', '()' ועוד)
-* התעלמות ממילים סופיות לא רלוונטיות (״מילואים״, "נייד", "בית", "עבודה" …)
-* fuzzy‑eq על־ידי Levenshtein ≥ 90 %
-* בונוס 100 % כאשר core‑tokens זהים (שם‑פרטי + משפחה)
-* length_penalty מוחל רק אם יש +2 טוקנים פער
-"""
-
-from __future__ import annotations
-import re
+# logic.py – בדיקת משתמש מורשה (Sheets + קובץ מקומי)
 import os
-from io import BytesIO
-from typing import List, Set
-
+import re
+import logging
 import pandas as pd
-import unidecode
-from rapidfuzz import fuzz, distance
+
+# gspread + Google Auth
+import google.auth
 import gspread
-from google.oauth2 import service_account
 
 # ───────── CONSTANTS ─────────
-NAME_COL          = "שם מלא"
-PHONE_COL         = "מספר פלאפון"
-COUNT_COL         = "כמות מוזמנים"
-SIDE_COL          = "צד"
-GROUP_COL         = "קבוצה"
+# אם תרצה, תגדיר את אלה כמשתני סביבה ב־Cloud Run:
+SPREADSHEET_ID_ENV   = "SPREADSHEET_ID"    # מזהה הגיליון מתוך ה-URL: https://.../d/<ID>/...
+WORKSHEET_TITLE_ENV  = "WORKSHEET_TITLE"   # שם הלשונית (לדוג׳ 'גיליון1'), אפשר None
 
-AUTO_SCORE        = 100
-AUTO_SELECT_TH    = 93
-MIN_SCORE_DISPLAY = 70  
-MAX_DISPLAYED     = 6
+LOCAL_ALLOWED_FILE   = "allowed_users.xlsx"  # קובץ גיבוי במידה ואין Sheets
+LOCAL_PHONE_COLS     = ("טלפון", "phone", "מספר")  # מילות מפתח לכותרת עמודת טלפון
 
-# הגדרות Google Sheets
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-SPREADSHEET_ID = "1kMilBqKmldMBuvHtOdJsEGfo6Kb-J0W5rEXAhmG57b0"
+# Scopes ל־Sheets + Drive (לקריאה בלבד)
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
 
-# מילות יחס/קשר (ignored לגמרי)
-GENERIC_TOKENS: Set[str] = {
-    "של", "ה", "בן", "בת", "משפחת", "אחי", "אחות", "דוד", "דודה"
-}
-# סיומות/כינויים שאינם חלק מהשם (נמחקות מהקצה)
-SUFFIX_TOKENS: Set[str] = {
-    "מילואים", "miluyim", "miloyim", "mil", "נייד", "סלולר", "סלולרי",
-    "בית", "עבודה", "עסקי", "אישי", "משרד"
-}
+# ───────── Helpers ─────────
+def only_digits(s: str) -> str:
+    """מוריד כל תו שאינו ספרה."""
+    return re.sub(r"\D+", "", s or "")
 
-# ───────── GOOGLE SHEETS CONNECTION ─────────
-def _get_sheet():
-    """צריבת התחברות לגוגל שיטס"""
-    possible_paths = [
-        "/etc/secrets/gcp_credentials.json",
-        "gcp_credentials.json",
-        "./gcp_credentials.json"
-    ]
-    creds = None
-    for path in possible_paths:
-        if os.path.exists(path):
-            creds = service_account.Credentials.from_service_account_file(path, scopes=SCOPES)
-            break
-    if not creds:
+def _load_allowed_from_sheets() -> set[str] | None:
+    """מנסה לטעון את רשימת המורשים מגוגל שיטס. מחזיר None אם נכשל."""
+    sheet_id = os.getenv(SPREADSHEET_ID_ENV)
+    if not sheet_id:
+        logging.info("Env var %s not set, skipping Sheets.", SPREADSHEET_ID_ENV)
         return None
-    gc = gspread.authorize(creds)
-    return gc.open_by_key(SPREADSHEET_ID).worksheet("גיליון1")
 
+    # לוקח שם לשונית אם קיים
+    sheet_title = os.getenv(WORKSHEET_TITLE_ENV)
+
+    try:
+        # ADC: משתמש בקרדנשלס של השירות (Cloud Run SA)
+        creds, _ = google.auth.default(scopes=SCOPES)
+        client = gspread.authorize(creds)
+
+        sh = client.open_by_key(sheet_id)
+        ws = sh.worksheet(sheet_title) if sheet_title else sh.sheet1
+
+        rows = ws.get_all_values()
+        if not rows or len(rows) < 2:
+            logging.warning("Allowed sheet is empty or has no data.")
+            return set()
+
+        # כותרת בעמודה הראשונה מזהה עמודת טלפון
+        header = [c.strip() for c in rows[0]]
+        try:
+            phone_idx = next(i for i,h in enumerate(header) if h in LOCAL_PHONE_COLS)
+        except StopIteration:
+            phone_idx = 1  # עמודה B כברירת מחדל
+
+        allowed = {
+            only_digits(row[phone_idx])
+            for row in rows[1:]
+            if len(row) > phone_idx and only_digits(row[phone_idx])
+        }
+        logging.info("Loaded %d allowed phones from Sheets.", len(allowed))
+        return allowed
+
+    except Exception as e:
+        logging.exception("Failed to load allowed phones from Sheets")
+        return None
+
+def _load_allowed_from_excel() -> set[str]:
+    """טוען את רשימת המורשים מקובץ Excel מקומי."""
+    if not os.path.exists(LOCAL_ALLOWED_FILE):
+        logging.info("Local allowed file %s not found.", LOCAL_ALLOWED_FILE)
+        return set()
+
+    try:
+        df = pd.read_excel(LOCAL_ALLOWED_FILE, dtype=str)
+    except Exception as e:
+        logging.exception("Failed to read local allowed Excel file")
+        return set()
+
+    # מוצא עמודת טלפון לפי כותרת
+    cols = [c for c in df.columns if any(k in str(c).lower() for k in LOCAL_PHONE_COLS)]
+    if not cols:
+        logging.warning("No phone column found in local Excel.")
+        return set()
+
+    phone_col = cols[0]
+    allowed = {
+        only_digits(str(val))
+        for val in df[phone_col]
+        if only_digits(str(val))
+    }
+    logging.info("Loaded %d allowed phones from local Excel.", len(allowed))
+    return allowed
+
+# ───────── Public API ─────────
 def is_user_authorized(phone: str) -> bool:
-    """בדיקה האם משתמש מורשה - גוגל שיטס + קובץ מקומי"""
-    clean_phone = re.sub(r"\D", "", phone or "")
-    sheet = _get_sheet()
-    if sheet:
-        for row in sheet.get_all_records():
-            if clean_phone == re.sub(r"\D", "", str(row.get("טלפון", ""))):
-                return True
-    # קובץ מקומי
-    local = "allowed_users.xlsx"
-    if os.path.exists(local):
-        df = pd.read_excel(local)
-        for col in df.columns:
-            if any(k in str(col).lower() for k in ["טלפון","phone","מספר"]):
-                for val in df[col].astype(str):
-                    if clean_phone == re.sub(r"\D","", val):
-                        return True
-                break
-    return False
+    """
+    מחזיר True אם המספר מופיע ברשימת המורשים (Sheets או Excel מקומי).
+    """
+    clean_phone = only_digits(phone)
+
+    # מנסה קודם גוגל שיטס
+    allowed = _load_allowed_from_sheets()
+    if allowed is not None:
+        return clean_phone in allowed
+
+    # אחרת גיבוי מקומי
+    allowed_local = _load_allowed_from_excel()
+    return clean_phone in allowed_local
+
 
 # ───────── HELPERS ─────────
 _punc_re   = re.compile(r"[\|\\/()\[\]\"'׳'״.,\-]+")
