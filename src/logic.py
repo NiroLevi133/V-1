@@ -8,6 +8,8 @@ import pandas as pd
 import google.auth
 import gspread
 
+
+
 # ───────── CONSTANTS ─────────
 # אם תרצה, תגדיר את אלה כמשתני סביבה ב־Cloud Run:
 SPREADSHEET_ID_ENV   = "SPREADSHEET_ID"    # מזהה הגיליון מתוך ה-URL: https://.../d/<ID>/...
@@ -22,6 +24,9 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 
+
+logging.info("ENV SPREADSHEET_ID = %s", os.getenv("SPREADSHEET_ID"))
+logging.info("ENV WORKSHEET_TITLE = %s", os.getenv("WORKSHEET_TITLE"))
 # ───────── Helpers ─────────
 def only_digits(s: str) -> str:
     """מוריד כל תו שאינו ספרה."""
@@ -68,6 +73,10 @@ def _load_allowed_from_sheets() -> set[str] | None:
     except Exception as e:
         logging.exception("Failed to load allowed phones from Sheets")
         return None
+
+    allowed = { … }  # הקיים שלך
+    logging.info("DEBUG: loaded from Sheets %d phones: %s", len(allowed), list(allowed)[:5])
+    return allowed
 
 def _load_allowed_from_excel() -> set[str]:
     """טוען את רשימת המורשים מקובץ Excel מקומי."""
