@@ -20,8 +20,6 @@ from logic import (
 # ───────── הגדרות בסיסיות ─────────
 logging.basicConfig(level=logging.ERROR)
 PAGE_TITLE        = " מיזוג טלפונים 💎"
-GREEN_ID          = "7105248361"
-GREEN_TOKEN       = "8b416b11358045f3bad816ffaf433454989a08cfb4d448ebae"
 CODE_TTL_SECONDS  = 300
 MAX_AUTH_ATTEMPTS = 5
 PHONE_PATTERN     = re.compile(r"^0\d{9}$")
@@ -29,6 +27,14 @@ ADMIN_WHATSAPP    = "972507676706"
 
 st.set_page_config(page_title=PAGE_TITLE, layout="wide")
 
+def get_required_env(name: str) -> str:
+    v = os.getenv(name)
+    if not v:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return v
+
+GREEN_API_ID    = get_required_env("GREEN_API_ID")
+GREEN_API_TOKEN = get_required_env("GREEN_API_TOKEN")   
 
 #HELP
 # תיקיה זמנית לכתיבה - עובדת גם לוקאלית וגם ב-Render
