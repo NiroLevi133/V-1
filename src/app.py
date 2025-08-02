@@ -456,7 +456,7 @@ def auth_flow() -> bool:
     label_txt = "מספר טלפון" if state == "phone" else "קוד אימות"
 
     st.markdown(f'<div class="auth-icon">{icon}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="auth-title">מערכת שילוב רשימות</div>', unsafe_allow_html=True)
+    st.markdown('<div class="auth-title">מערכת שילודדדדדדב רשימות</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="auth-subtitle">{subtitle}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="phone-label">{label_txt}</div>', unsafe_allow_html=True)
 
