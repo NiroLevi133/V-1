@@ -44,19 +44,22 @@ GREEN_API_TOKEN = get_required_env("GREEN_API_TOKEN")
 TMP_ROOT = Path(tempfile.gettempdir()) / "merge_app"
 TMP_ROOT.mkdir(parents=True, exist_ok=True)
 
-import streamlit as st
-from logic import get_allowed_sheet_dataframe, is_user_authorized
-
-with st.expander("בדיקת הרשאות – תצוגת הגיליון"):
+st.markdown("### 🔐 בדיקת הרשאות (אדמין)")
+with st.expander("הצג נתוני גיליון המורשים"):
     df_allowed = get_allowed_sheet_dataframe()
     if df_allowed is None:
-        st.warning("אין גישה לגיליון או SPREADSHEET_ID לא הוגדר.")
+        st.warning("אין גישה לגיליון או שחסר SPREADSHEET_ID בסביבה.")
+    elif df_allowed.empty:
+        st.info("הגיליון ריק (אין שורות מתחת לכותרת).")
     else:
-        st.dataframe(df_allowed)
+        st.write("שורות נטענו:", len(df_allowed))
+        st.dataframe(df_allowed, use_container_width=True)
 
-phone = st.text_input("מספר טלפון")
-if st.button("בדוק הרשאה"):
-    st.write("מורשה ✅" if is_user_authorized(phone) else "לא מורשה ❌")
+    test_phone = st.text_input("מספר לבדיקה (לדוגמה 050-7676706)", key="admin_test_phone")
+    if st.button("בדוק הרשאה", key="admin_check_btn"):
+        st.write("תוצאה:", "✅ מורשה" if is_user_authorized(test_phone) else "❌ לא מורשה")
+
+st.markdown("---")
 
 def _user_root() -> Path:
     """תיקיית עבודה פר-משתמש לפי מספר הטלפון (אחרי התחברות)."""
