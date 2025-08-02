@@ -4,7 +4,6 @@ from __future__ import annotations
 import os, re, logging
 from io import BytesIO
 from typing import List, Set
-
 import pandas as pd
 import unidecode
 from rapidfuzz import fuzz, distance
@@ -46,6 +45,19 @@ SUFFIX_TOKENS: Set[str] = {
 }
 
 # ───────── הרשאות משתמשים (Sheets + קובץ גיבוי) ─────────
+
+def _pick_worksheet(sh):
+    """מאתר לשונית לפי שם (בלי רגישות לרישיות/רווחים).
+    אם לא הוגדר או לא נמצא – מחזיר את הראשונה.
+    """
+    wanted = os.getenv(WORKSHEET_TITLE_ENV)
+    if wanted:
+        w = wanted.strip().lower()
+        for ws in sh.worksheets():
+            if ws.title and ws.title.strip().lower() == w:
+                return ws
+    return sh.get_worksheet(0)  # הלשונית הראשונה
+
 def only_digits(s: str) -> str:
     return re.sub(r"\D+", "", s or "")
 
@@ -62,21 +74,22 @@ def _load_allowed_from_sheets() -> set[str] | None:
         gc = gspread.authorize(creds)
 
         sh = gc.open_by_key(sheet_id)
-        title = os.getenv(WORKSHEET_TITLE_ENV)
-        ws = sh.worksheet(title) if title else sh.sheet1
+        ws = _pick_worksheet(sh)
+
 
         rows = ws.get_all_values() or []
         if len(rows) < 2:
             return set()
 
         # זיהוי עמודת הטלפון (Case-insensitive)
-        header = [str(c).strip() for c in rows[0]]
-        header_lower = [h.lower() for h in header]
-        lookup = tuple(x.lower() for x in LOCAL_PHONE_COLS)
-        try:
-            phone_idx = next(i for i, h in enumerate(header_lower) if h in lookup)
-        except StopIteration:
-            phone_idx = 1  # ברירת מחדל: עמודה B
+       header       = [str(c).strip() for c in rows[0]]
+header_lower = [h.lower() for h in header]
+lookup       = tuple(x.lower() for x in ("טלפון", "מספר פלאפון", "פלאפון", "phone", "מספר"))
+try:
+    phone_idx = next(i for i, h in enumerate(header_lower) if h in lookup)
+except StopIteration:
+    phone_idx = 1  # ברירת מחדל לעמודה B
+
 
         return {
             only_digits(r[phone_idx])
