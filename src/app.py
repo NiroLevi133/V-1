@@ -1,75 +1,68 @@
 # ───────────────────────────────────────────────────────────
-# app.py  –  מיזוג טלפונים 💎
+# app.py – מיזוג טלפונים 💎
 # ───────────────────────────────────────────────────────────
-import time, secrets, re, logging, requests, os
-from datetime import datetime
-from typing import Optional
-from pathlib import Path
-import tempfile, gc
+from __future__ import annotations
+
+import os
+import re
+import gc
+import logging
+import tempfile
+import time
 from io import BytesIO
+from pathlib import Path
+from typing import Optional
+
 import pandas as pd
 import streamlit as st
+import requests
+import secrets
 
 from logic import (
+    # עמודות/קבועים מהלוגיקה
     NAME_COL, PHONE_COL, COUNT_COL, SIDE_COL, GROUP_COL,
-    AUTO_SELECT_TH, load_excel, to_buf,
-    format_phone, normalize, compute_best_scores, full_score,
-    is_user_authorized, MIN_SCORE_DISPLAY, MAX_DISPLAYED
+    MIN_SCORE_DISPLAY, MAX_DISPLAYED, AUTO_SELECT_TH,
+    # פונקציות לוגיקה
+    load_excel, to_buf, format_phone, normalize,
+    compute_best_scores, full_score, is_user_authorized,
 )
 
+# ───────── GREEN-API secrets (env / Secret Manager) ─────────
+GREEN_ID    = os.getenv("GREEN_ID")
+GREEN_TOKEN = os.getenv("GREEN_TOKEN")
+if not GREEN_ID or not GREEN_TOKEN:
+    logging.warning("GREEN_ID / GREEN_TOKEN not set. OTP sending will fail.")
+
+
 # ───────── הגדרות בסיסיות ─────────
-logging.basicConfig(level=logging.ERROR)
-PAGE_TITLE        = " מיזוג טלפונים 💎"
+PAGE_TITLE        = "מיזוג טלפונים 💎"
 CODE_TTL_SECONDS  = 300
 MAX_AUTH_ATTEMPTS = 5
 PHONE_PATTERN     = re.compile(r"^0\d{9}$")
 ADMIN_WHATSAPP    = "972507676706"
 
+# לוגים: ברירת מחדל INFO; אפשר לשלוט ע"י ENV LOG_LEVEL=DEBUG/INFO/WARNING
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
+
 st.set_page_config(page_title=PAGE_TITLE, layout="wide")
 
-def get_required_env(name: str) -> str:
-    v = os.getenv(name)
-    if not v:
-        raise RuntimeError(f"Missing required environment variable: {name}")
-    return v
-
-
-
-
-GREEN_API_ID    = get_required_env("GREEN_API_ID")
-GREEN_API_TOKEN = get_required_env("GREEN_API_TOKEN")   
-
-#HELP
-# תיקיה זמנית לכתיבה - עובדת גם לוקאלית וגם ב-Render
+# ───────── אחסון זמני (חוסך זיכרון ב־Streamlit) ─────────
+# תיקיית עבודה כללית, ואז מחלקים לפי טלפון משתמש
 TMP_ROOT = Path(tempfile.gettempdir()) / "merge_app"
 TMP_ROOT.mkdir(parents=True, exist_ok=True)
 
-st.markdown("### 🔐 בדיקת הרשאות (אדמין)")
-with st.expander("הצג נתוני גיליון המורשים"):
-    df_allowed = get_allowed_sheet_dataframe()
-    if df_allowed is None:
-        st.warning("אין גישה לגיליון או שחסר SPREADSHEET_ID בסביבה.")
-    elif df_allowed.empty:
-        st.info("הגיליון ריק (אין שורות מתחת לכותרת).")
-    else:
-        st.write("שורות נטענו:", len(df_allowed))
-        st.dataframe(df_allowed, use_container_width=True)
-
-    test_phone = st.text_input("מספר לבדיקה (לדוגמה 050-7676706)", key="admin_test_phone")
-    if st.button("בדוק הרשאה", key="admin_check_btn"):
-        st.write("תוצאה:", "✅ מורשה" if is_user_authorized(test_phone) else "❌ לא מורשה")
-
-st.markdown("---")
-
 def _user_root() -> Path:
-    """תיקיית עבודה פר-משתמש לפי מספר הטלפון (אחרי התחברות)."""
+    """תיקיית עבודה פר־משתמש (ע״פ טלפון אחרי לוגין)."""
     phone = st.session_state.get("phone", "anon")
     p = TMP_ROOT / phone
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 def save_tmp(uploaded_file, subfolder: str, fname: str) -> Path:
-    """שומר קובץ upload לתיקיית tmp/<phone>/<subfolder>/fname ומחזיר נתיב."""
+    """
+    שומר קובץ upload אל tmp/<phone>/<subfolder>/<fname> ומחזיר נתיב.
+    """
     base = _user_root() / subfolder
     base.mkdir(parents=True, exist_ok=True)
     path = base / fname
@@ -79,28 +72,28 @@ def save_tmp(uploaded_file, subfolder: str, fname: str) -> Path:
 @st.cache_data(show_spinner=False)
 def read_table(path_str: str) -> pd.DataFrame:
     """
-    קריאת קובץ (xlsx/xls/csv) מהדיסק בפעם הראשונה; תוצאה נשמרת בקאש.
-    משתמש ב-load_excel שלך כדי לשמור את כל הלוגיקה הקיימת.
+    קריאת קובץ (xlsx/csv) מהדיסק – תוצאה נשמרת בקאש.
+    משתמשים ב-load_excel מהלוגיקה כדי להשאיר את כל האינטליגנציה במקום אחד.
     """
     p = Path(path_str)
     with open(p, "rb") as f:
         df = load_excel(f)
-    # הקלה על הזיכרון: טיפוס מחרוזת קומפקטי אם זמין
+    # נסיון לחסוך זיכרון בעמודת הטלפון
     try:
         df[PHONE_COL] = df[PHONE_COL].astype("string[pyarrow]")
     except Exception:
         pass
     return df
 
-def persist_guests(df: pd.DataFrame):
+def persist_guests(df: pd.DataFrame) -> None:
     """
-    שומר את דאטה-פריים המוזמנים חזרה לקובץ (באותו path) ומנקה cache,
+    שומר את DataFrame המוזמנים חזרה לקובץ ושוטף קאש –
     כדי שהטעינה הבאה תראה את העדכון.
     """
     path = Path(st.session_state["guests_path"])
-    buf: BytesIO = to_buf(df)        # to_buf שלך מחזיר BytesIO ל-Excel
+    buf: BytesIO = to_buf(df)
     path.write_bytes(buf.getvalue())
-    st.cache_data.clear()            # לנקות cache כדי שהקריאה הבאה תביא את הגרסה החדשה
+    st.cache_data.clear()
 
 def get_contacts_df() -> pd.DataFrame:
     return read_table(st.session_state["contacts_path"])
@@ -109,21 +102,22 @@ def get_guests_df() -> pd.DataFrame:
     return read_table(st.session_state["guests_path"])
 
 def save_guests_df(df: pd.DataFrame) -> None:
-    # משתמש ב-persist_guests שלך
     persist_guests(df)
 
-    
-
-# ───────── מנגנון איתור קבצים (styles / assets) ─────────
-HERE = Path(__file__).resolve().parent           # .../src
+# ───────── איתור קבצי עיצוב/נכסים (styles / assets) ─────────
+HERE = Path(__file__).resolve().parent  # .../src
 
 def find_up(start: Path, subdir: str, fname: str) -> Path | None:
-    """מחפש subdir/fname בתיקייה הנתונה וכל ה-parents שלה."""
+    """
+    מחפש subdir/fname בתיקייה הנתונה וכל ה־parents שלה.
+    עובד בלוקאלי וגם ב־Cloud Run (שינויים של working dir).
+    """
     for base in (start, *start.parents):
         fp = base / subdir / fname
         if fp.is_file():
             return fp
     return None
+
 
 def find_css(fname: str) -> Path | None:
     """CSS מתוך styles – מנסה גם מה־cwd (לוקאל) וגם מ־HERE (שרת)."""
@@ -143,8 +137,14 @@ def normalize_phone_basic(p: str) -> Optional[str]:
 
 def send_code(phone: str, code: str):
     chat = ("972" + phone[1:] if phone.startswith("0") else phone) + "@c.us"
+    if not GREEN_ID or not GREEN_TOKEN:
+        raise RuntimeError("GREEN-API credentials are missing")
     url  = f"https://api.green-api.com/waInstance{GREEN_ID}/sendMessage/{GREEN_TOKEN}"
-    requests.post(url, json={"chatId": chat, "message": f"קוד האימות שלך: {code}"})
+    try:
+        requests.post(url, json={"chatId": chat, "message": f"קוד האימות שלך: {code}"}, timeout=10)
+    except Exception as e:
+        logging.exception("Failed to send OTP via GREEN-API")
+        raise
 
 def force_rerun():
     st.rerun()
@@ -456,7 +456,7 @@ def auth_flow() -> bool:
     label_txt = "מספר טלפון" if state == "phone" else "קוד אימות"
 
     st.markdown(f'<div class="auth-icon">{icon}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="auth-title">מערכת שילודדדדדדב רשימות</div>', unsafe_allow_html=True)
+    st.markdown('<div class="auth-title">מערכת שילוב רשימות</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="auth-subtitle">{subtitle}</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="phone-label">{label_txt}</div>', unsafe_allow_html=True)
 

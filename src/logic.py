@@ -1,42 +1,81 @@
-# ───────── הרשאות משתמשים (Sheets + קובץ גיבוי) ─────────
+# logic.py – מורשים + התאמות + ייצוא
 
+from __future__ import annotations
+
+import os, re, logging
+from io import BytesIO
+from typing import List, Set
+
+import pandas as pd
+import unidecode
+from rapidfuzz import fuzz, distance
+
+# Google Sheets via ADC (Cloud Run Service Account)
+import google.auth
+import gspread
+
+# ───────── קבועים ─────────
+NAME_COL          = "שם מלא"
+PHONE_COL         = "מספר פלאפון"
+COUNT_COL         = "כמות מוזמנים"
+SIDE_COL          = "צד"
+GROUP_COL         = "קבוצה"
+
+AUTO_SCORE        = 100
+AUTO_SELECT_TH    = 93
+MIN_SCORE_DISPLAY = 70
+MAX_DISPLAYED     = 6
+
+# הרשאות/Scopes לקריאה בלבד
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
+
+# ENV לגיליון המורשים
+SPREADSHEET_ID_ENV  = "SPREADSHEET_ID"
+WORKSHEET_TITLE_ENV = "WORKSHEET_TITLE"   # אופציונלי
+
+# גיבוי מקומי
+LOCAL_ALLOWED_FILE  = "allowed_users.xlsx"
+LOCAL_PHONE_COLS    = ("טלפון", "phone", "מספר", "מספר פלאפון", "פלאפון")
+
+# טוקנים לנירמול שמות
+GENERIC_TOKENS: Set[str] = {"של", "ה", "בן", "בת", "משפחת", "אחי", "אחות", "דוד", "דודה"}
+SUFFIX_TOKENS:  Set[str] = {
+    "מילואים", "miluyim", "miloyim", "mil", "נייד", "סלולר", "סלולרי",
+    "בית", "עבודה", "עסקי", "אישי", "משרד"
+}
+
+# ───────── עזרים ─────────
+def only_digits(s: str) -> str:
+    return re.sub(r"\D+", "", s or "")
+
+# ───────── מורשים: Google Sheets + קובץ גיבוי ─────────
 def _pick_worksheet(sh):
-    """
-    מאתר לשונית לפי שם (בלי רגישות לרישיות/רווחים).
-    אם לא הוגדר או לא נמצא – מחזיר את הראשונה.
-    """
+    """מאתר לשונית לפי שם (לא רגיש לרישיות/רווחים). אם אין/לא נמצא – הראשונה."""
     wanted = os.getenv(WORKSHEET_TITLE_ENV)
     if wanted:
         w = wanted.strip().lower()
         for ws in sh.worksheets():
             if (ws.title or "").strip().lower() == w:
                 return ws
-    return sh.get_worksheet(0)  # הלשונית הראשונה
-
-def only_digits(s: str) -> str:
-    return re.sub(r"\D+", "", s or "")
+    return sh.get_worksheet(0)
 
 def _find_phone_col(header: list[str]) -> int:
-    """
-    מחזיר את אינדקס עמודת הטלפון לפי כותרת, case-insensitive.
-    אם לא נמצא – ברירת מחדל עמודה B (אינדקס 1).
-    """
+    """אינדקס עמודת הטלפון לפי כותרת (case-insensitive). אם לא נמצא – B (1)."""
     header_lower = [str(h).strip().lower() for h in header]
     lookup = tuple(x.lower() for x in ("טלפון", "מספר פלאפון", "פלאפון", "phone", "מספר"))
     for i, h in enumerate(header_lower):
         if h in lookup:
             return i
-    return 1  # B כברירת מחדל
+    return 1
 
 def _load_allowed_from_sheets() -> set[str] | None:
-    """
-    טוען סט של טלפונים מורשים מ-Google Sheets דרך Service Account של Cloud Run.
-    מחזיר None אם אין ID בסביבה או אם הייתה שגיאה (כדי לאפשר גיבוי לקובץ מקומי).
-    """
+    """טוען סט טלפונים מורשים מ-Sheets דרך ADC. מחזיר None אם אין/שגיאה (כדי לאפשר גיבוי)."""
     sheet_id = os.getenv(SPREADSHEET_ID_ENV)
     if not sheet_id:
         return None
-
     try:
         creds, _ = google.auth.default(scopes=SCOPES)
         gc = gspread.authorize(creds)
@@ -45,7 +84,7 @@ def _load_allowed_from_sheets() -> set[str] | None:
 
         rows = ws.get_all_values() or []
         if len(rows) < 2:
-            logging.info("Allowed sheet has header only or empty.")
+            logging.info("Allowed sheet is empty or header-only.")
             return set()
 
         header = [str(c).strip() for c in rows[0]]
@@ -57,15 +96,11 @@ def _load_allowed_from_sheets() -> set[str] | None:
             if len(r) > phone_idx and only_digits(r[phone_idx])
         }
 
-        # לוג קצר לבקרה
         if allowed:
-            sample = list(allowed)[:5]
-            logging.info("Loaded %d allowed phones from Sheets. Samples: %s", len(allowed), sample)
+            logging.info("Loaded %d allowed phones from Sheets.", len(allowed))
         else:
-            logging.info("No allowed phones found in Sheets (after normalization).")
-
+            logging.info("No allowed phones found in Sheets after normalization.")
         return allowed
-
     except Exception:
         logging.exception("Failed to load allowed phones from Sheets")
         return None
@@ -90,97 +125,20 @@ def _load_allowed_from_excel() -> set[str]:
     return allowed
 
 def is_user_authorized(phone: str) -> bool:
-    """True אם המספר (אחרי נירמול) מופיע ברשימת המורשים (Sheets או Excel מקומי)."""
+    """True אם המספר (אחרי נורמליזציה) מופיע ברשימת המורשים (Sheets או Excel מקומי)."""
     clean = only_digits(phone)
     allowed = _load_allowed_from_sheets()
     if allowed is None:
         allowed = _load_allowed_from_excel()
     return clean in allowed
 
-# ───────── דיבאג/תצוגה: החזרת כל תוכן הגיליון כמסגרת נתונים ─────────
-def get_allowed_sheet_dataframe() -> pd.DataFrame | None:
-    """
-    מחזיר את כל תוכן הגיליון (לשימוש ב-UI: st.dataframe).
-    אם אין גישה/ID – מחזיר None.
-    """
-    sheet_id = os.getenv(SPREADSHEET_ID_ENV)
-    if not sheet_id:
-        return None
-    try:
-        creds, _ = google.auth.default(scopes=SCOPES)
-        gc = gspread.authorize(creds)
-        sh = gc.open_by_key(sheet_id)
-        ws = _pick_worksheet(sh)
-
-        rows = ws.get_all_values() or []
-        if not rows:
-            return pd.DataFrame()
-
-        header = [str(c).strip() for c in rows[0]]
-        data = rows[1:]
-        df = pd.DataFrame(data, columns=header)
-        return df
-    except Exception:
-        logging.exception("Failed to fetch allowed sheet dataframe")
-        return None
-
-
-def _load_allowed_from_excel() -> set[str]:
-    """גיבוי: טוען טלפונים מורשים מ-allowed_users.xlsx (אם קיים לצד האפליקציה)."""
-    if not os.path.exists(LOCAL_ALLOWED_FILE):
-        return set()
-    try:
-        df = pd.read_excel(LOCAL_ALLOWED_FILE, dtype=str)
-    except Exception:
-        logging.exception("Failed to read local allowed Excel")
-        return set()
-
-    cols = [c for c in df.columns if any(k in str(c).lower() for k in LOCAL_PHONE_COLS)]
-    if not cols:
-        return set()
-
-    phone_col = cols[0]
-    return {only_digits(str(v)) for v in df[phone_col] if only_digits(str(v))}
-
-def is_user_authorized(phone: str) -> bool:
-    """True אם המספר (אחרי נירמול) מופיע ברשימת המורשים (Sheets או Excel מקומי)."""
-    clean = only_digits(phone)
-    allowed = _load_allowed_from_sheets()
-    if allowed is None:
-        allowed = _load_allowed_from_excel()
-    return clean in allowed
-
-# ───────── נירמול שמות / ניקוד / ציונים (הקוד שלך, בתיקונים קלים) ─────────
-_punc_re   = re.compile(r"[\|\\/()\[\]\"'׳\".,\-]+")
+# ───────── פונקציות התאמה ─────────
+_punc_re   = re.compile(r"[\|\\/()\[\]\"'׳״.,\-]+")
 _space_re  = re.compile(r"\s+")
 _token_re  = re.compile(r"\s+")
 
-def _best_text_col(candidates: List[str], df: pd.DataFrame) -> str:
-    def score(col):
-        s = df[col].astype(str).fillna("")
-        return ((s.str.strip() != "").sum(), s.str.contains(r"[A-Za-zא-ת]").mean(), s.str.len().mean())
-    return max(candidates, key=score)
-
-def _resolve_full_name_series(df: pd.DataFrame) -> pd.Series:
-    cols = list(df.columns)
-    low = {c: c.strip().lower() for c in cols}
-    direct = {"שם מלא","full name","fullname","guest name","שם המוזמן"}
-    for c in cols:
-        if low[c] in direct:
-            return df[c].fillna("").astype(str).str.strip()
-    first = [c for c in cols if "פרטי" in low[c] or low[c] in {"שם","first","firstname"}]
-    last  = [c for c in cols if "משפחה" in low[c] or low[c] in {"last","lastname","surname"}]
-    if first and last:
-        f, l = _best_text_col(first, df), _best_text_col(last, df)
-        return (df[f].fillna("").astype(str).str.strip() + " " +
-                df[l].fillna("").astype(str).str.strip()).str.replace(r"\s+"," ",regex=True).str.strip()
-    name_like = [c for c in cols if any(k in low[c] for k in ["שם","name","guest","מוזמן"])]
-    if name_like:
-        c = _best_text_col(name_like, df)
-        return df[c].fillna("").astype(str).str.strip()
-    return pd.Series([""]*len(df))
-
 def normalize(txt: str | None) -> str:
+    """נירמול: lowercase → הורדת סימני פיסוק → רווח יחיד → תעתיק לטיני."""
     if not txt:
         return ""
     t = str(txt).lower()
@@ -223,6 +181,7 @@ def format_phone(ph: str) -> str:
     return f"{d[:3]}-{d[3:]}" if len(d) == 10 else d
 
 def full_score(g_norm: str, c_norm: str) -> int:
+    """ציון התאמה 0–100 בין שני שמות מנורמלים."""
     if not g_norm or not c_norm:
         return 0
     if g_norm.strip() == c_norm.strip():
@@ -247,14 +206,49 @@ def reason_for(g_norm: str, c_norm: str, score: int) -> str:
         return "התאמה גבוהה"
     return ""
 
+# ───────── זיהוי עמודות שם/טלפון בקובצי קלט ─────────
+def _best_text_col(candidates: List[str], df: pd.DataFrame) -> str:
+    """בחירת עמודת טקסט איכותית מתוך מועמדים."""
+    def score(col):
+        s = df[col].astype(str).fillna("")
+        return ((s.str.strip() != "").sum(), s.str.contains(r"[A-Za-zא-ת]").mean(), s.str.len().mean())
+    return max(candidates, key=score)
+
+def _resolve_full_name_series(df: pd.DataFrame) -> pd.Series:
+    """
+    מאחד שם פרטי+משפחה / מזהה 'שם מלא' / דמויות שם – ומחזיר Series.
+    """
+    cols = list(df.columns)
+    low = {c: str(c).strip().lower() for c in cols}
+    # ישירות
+    direct = {"שם מלא", "full name", "fullname", "guest name", "שם המוזמן"}
+    for c in cols:
+        if low[c] in direct:
+            return df[c].fillna("").astype(str).str.strip()
+    # פרטי + משפחה
+    first = [c for c in cols if "פרטי" in low[c] or low[c] in {"שם", "first", "firstname"}]
+    last  = [c for c in cols if "משפחה" in low[c] or low[c] in {"last", "lastname", "surname"}]
+    if first and last:
+        f, l = _best_text_col(first, df), _best_text_col(last, df)
+        return (df[f].fillna("").astype(str).str.strip() + " " +
+                df[l].fillna("").astype(str).str.strip()).str.replace(r"\s+", " ", regex=True).str.strip()
+    # דמויות שם
+    name_like = [c for c in cols if any(k in low[c] for k in ["שם", "name", "guest", "מוזמן"])]
+    if name_like:
+        c = _best_text_col(name_like, df)
+        return df[c].fillna("").astype(str).str.strip()
+    return pd.Series([""] * len(df))
+
+# ───────── טעינת קלט וייצוא ─────────
 def load_excel(file) -> pd.DataFrame:
-    # 1) קריאה דינמית של CSV או Excel
+    """טוען CSV/XLSX, מנרמל ומוודא עמודות חובה."""
+    # 1) קריאה
     if hasattr(file, "name") and str(file.name).lower().endswith(".csv"):
         df = pd.read_csv(file).rename(columns=lambda c: str(c).strip())
     else:
         df = pd.read_excel(file).rename(columns=lambda c: str(c).strip())
 
-    # 2) עמודת טלפון
+    # 2) טלפון
     if PHONE_COL not in df.columns:
         hints = ["טלפון", "פלא", "נייד", "cell", "mobile", "phone", "מספר"]
         alt = [c for c in df.columns if any(h in str(c).lower() for h in hints)]
@@ -263,20 +257,24 @@ def load_excel(file) -> pd.DataFrame:
         else:
             df[PHONE_COL] = ""
     df[PHONE_COL] = (
-        df[PHONE_COL].fillna("").astype(str)
+        df[PHONE_COL]
+        .fillna("")
+        .astype(str)
         .str.replace(r"\.0$", "", regex=True)
         .str.strip()
     )
 
-    # 3) עמודת "שם מלא"
+    # 3) שם מלא
     if NAME_COL in df.columns:
         df[NAME_COL] = df[NAME_COL].fillna("").astype(str).str.strip()
     else:
         df[NAME_COL] = _resolve_full_name_series(df)
 
-    # 4) "כמות מוזמנים"
-    count_hints = ["כמות", "מספר מוזמנים", "מס' מוזמנים", "מוזמנים",
-                   "מספר אורחים", "אורחים", "guest count", "guests", "guest", "count", "qty", "quantity", "amount"]
+    # 4) כמות מוזמנים
+    count_hints = [
+        "כמות", "מספר מוזמנים", "מס' מוזמנים", "מוזמנים", "מספר אורחים", "אורחים",
+        "guest count", "guests", "guest", "count", "qty", "quantity", "amount",
+    ]
     if COUNT_COL not in df.columns:
         alt_count = [c for c in df.columns if any(h in str(c).lower() for h in count_hints)]
         if alt_count:
@@ -294,11 +292,12 @@ def load_excel(file) -> pd.DataFrame:
         else:
             df[col] = df[col].fillna("").astype(str).str.strip()
 
-    # 6) שם מנורמל
+    # 6) שם מנורמל להתאמות
     df["norm_name"] = df[NAME_COL].map(normalize)
     return df
 
 def to_buf(df: pd.DataFrame) -> BytesIO:
+    """ייצוא ל-Excel: מסיר עמודות פנימיות ומשאיר טלפון בסוף."""
     export = df.drop(columns=["norm_name", "score", "best_score", NAME_COL], errors="ignore").copy()
     original = [c for c in export.columns if c != PHONE_COL]
     final = original + [PHONE_COL]
@@ -309,13 +308,14 @@ def to_buf(df: pd.DataFrame) -> BytesIO:
     buf.seek(0)
     return buf
 
+# ───────── התאמות ─────────
 def top_matches(guest_norm: str, contacts_df: pd.DataFrame) -> pd.DataFrame:
     if not guest_norm:
         return pd.DataFrame(columns=list(contacts_df.columns) + ["score", "reason"])
     scores = contacts_df["norm_name"].apply(lambda c: full_score(guest_norm, c))
     df = (
         contacts_df.assign(score=scores)
-        .query("score>=@MIN_SCORE_DISPLAY")
+        .query("score >= @MIN_SCORE_DISPLAY")
         .sort_values(["score", NAME_COL], ascending=[False, True])
         .head(MAX_DISPLAYED)
         .copy()
@@ -327,3 +327,24 @@ def compute_best_scores(guests_df: pd.DataFrame, contacts_df: pd.DataFrame) -> p
     return guests_df["norm_name"].apply(
         lambda n: int(contacts_df["norm_name"].apply(lambda c: full_score(n, c)).max()) if n else 0
     )
+
+# ───────── דיבאג: הצגת גיליון המורשים ב-UI (לא חובה) ─────────
+def get_allowed_sheet_dataframe() -> pd.DataFrame | None:
+    """להצגה ב-Streamlit לצורכי בדיקה."""
+    sheet_id = os.getenv(SPREADSHEET_ID_ENV)
+    if not sheet_id:
+        return None
+    try:
+        creds, _ = google.auth.default(scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_key(sheet_id)
+        ws = _pick_worksheet(sh)
+        rows = ws.get_all_values() or []
+        if not rows:
+            return pd.DataFrame()
+        header = [str(c).strip() for c in rows[0]]
+        data = rows[1:]
+        return pd.DataFrame(data, columns=header)
+    except Exception:
+        logging.exception("Failed to fetch allowed sheet dataframe")
+        return None
