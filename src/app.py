@@ -33,6 +33,9 @@ def get_required_env(name: str) -> str:
         raise RuntimeError(f"Missing required environment variable: {name}")
     return v
 
+
+
+
 GREEN_API_ID    = get_required_env("GREEN_API_ID")
 GREEN_API_TOKEN = get_required_env("GREEN_API_TOKEN")   
 
@@ -40,6 +43,20 @@ GREEN_API_TOKEN = get_required_env("GREEN_API_TOKEN")
 # תיקיה זמנית לכתיבה - עובדת גם לוקאלית וגם ב-Render
 TMP_ROOT = Path(tempfile.gettempdir()) / "merge_app"
 TMP_ROOT.mkdir(parents=True, exist_ok=True)
+
+import streamlit as st
+from logic import get_allowed_sheet_dataframe, is_user_authorized
+
+with st.expander("בדיקת הרשאות – תצוגת הגיליון"):
+    df_allowed = get_allowed_sheet_dataframe()
+    if df_allowed is None:
+        st.warning("אין גישה לגיליון או SPREADSHEET_ID לא הוגדר.")
+    else:
+        st.dataframe(df_allowed)
+
+phone = st.text_input("מספר טלפון")
+if st.button("בדוק הרשאה"):
+    st.write("מורשה ✅" if is_user_authorized(phone) else "לא מורשה ❌")
 
 def _user_root() -> Path:
     """תיקיית עבודה פר-משתמש לפי מספר הטלפון (אחרי התחברות)."""

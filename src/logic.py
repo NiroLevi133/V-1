@@ -1,69 +1,37 @@
-# logic.py – הרשאות + לוגיקת התאמות, גרסה נקייה לעבודה ב-Cloud Run
-
-from __future__ import annotations
-import os, re, logging
-from io import BytesIO
-from typing import List, Set
-import pandas as pd
-import unidecode
-from rapidfuzz import fuzz, distance
-
-# --- Google Sheets (ADC via Cloud Run Service Account) ---
-import google.auth
-import gspread
-
-# ───────── CONSTANTS ─────────
-NAME_COL          = "שם מלא"
-PHONE_COL         = "מספר פלאפון"
-COUNT_COL         = "כמות מוזמנים"
-SIDE_COL          = "צד"
-GROUP_COL         = "קבוצה"
-
-AUTO_SCORE        = 100
-AUTO_SELECT_TH    = 93
-MIN_SCORE_DISPLAY = 70
-MAX_DISPLAYED     = 6
-
-# הרשאות Google APIs (קריאה בלבד)
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
-    "https://www.googleapis.com/auth/drive.readonly",
-]
-
-# Env vars לקריאת גיליון המורשים
-SPREADSHEET_ID_ENV  = "SPREADSHEET_ID"     # ה-ID שב-URL של הגיליון
-WORKSHEET_TITLE_ENV = "WORKSHEET_TITLE"    # שם הלשונית (אופציונלי)
-
-LOCAL_ALLOWED_FILE  = "allowed_users.xlsx"  # גיבוי מקומי
-LOCAL_PHONE_COLS    = ("טלפון", "phone", "מספר", "מספר פלאפון", "פלאפון")
-
-# מילות יחס/קשר (ignored לגמרי)
-GENERIC_TOKENS: Set[str] = {"של", "ה", "בן", "בת", "משפחת", "אחי", "אחות", "דוד", "דודה"}
-# סיומות/כינויים שאינם חלק מהשם (נמחקות מהקצה)
-SUFFIX_TOKENS: Set[str] = {
-    "מילואים", "miluyim", "miloyim", "mil", "נייד", "סלולר", "סלולרי", "בית", "עבודה", "עסקי", "אישי", "משרד"
-}
-
 # ───────── הרשאות משתמשים (Sheets + קובץ גיבוי) ─────────
 
 def _pick_worksheet(sh):
-    """מאתר לשונית לפי שם (בלי רגישות לרישיות/רווחים).
+    """
+    מאתר לשונית לפי שם (בלי רגישות לרישיות/רווחים).
     אם לא הוגדר או לא נמצא – מחזיר את הראשונה.
     """
     wanted = os.getenv(WORKSHEET_TITLE_ENV)
     if wanted:
         w = wanted.strip().lower()
         for ws in sh.worksheets():
-            if ws.title and ws.title.strip().lower() == w:
+            if (ws.title or "").strip().lower() == w:
                 return ws
     return sh.get_worksheet(0)  # הלשונית הראשונה
 
 def only_digits(s: str) -> str:
     return re.sub(r"\D+", "", s or "")
 
+def _find_phone_col(header: list[str]) -> int:
+    """
+    מחזיר את אינדקס עמודת הטלפון לפי כותרת, case-insensitive.
+    אם לא נמצא – ברירת מחדל עמודה B (אינדקס 1).
+    """
+    header_lower = [str(h).strip().lower() for h in header]
+    lookup = tuple(x.lower() for x in ("טלפון", "מספר פלאפון", "פלאפון", "phone", "מספר"))
+    for i, h in enumerate(header_lower):
+        if h in lookup:
+            return i
+    return 1  # B כברירת מחדל
+
 def _load_allowed_from_sheets() -> set[str] | None:
-    """טוען סט של טלפונים מורשים מ-Google Sheets דרך ה-Service Account של Cloud Run.
-    מחזיר None אם אין ID בסביבה או אם הייתה שגיאה בזמן הקריאה.
+    """
+    טוען סט של טלפונים מורשים מ-Google Sheets דרך Service Account של Cloud Run.
+    מחזיר None אם אין ID בסביבה או אם הייתה שגיאה (כדי לאפשר גיבוי לקובץ מקומי).
     """
     sheet_id = os.getenv(SPREADSHEET_ID_ENV)
     if not sheet_id:
@@ -72,34 +40,90 @@ def _load_allowed_from_sheets() -> set[str] | None:
     try:
         creds, _ = google.auth.default(scopes=SCOPES)
         gc = gspread.authorize(creds)
-
         sh = gc.open_by_key(sheet_id)
         ws = _pick_worksheet(sh)
 
-
         rows = ws.get_all_values() or []
         if len(rows) < 2:
+            logging.info("Allowed sheet has header only or empty.")
             return set()
 
-        # זיהוי עמודת הטלפון (Case-insensitive)
-       header       = [str(c).strip() for c in rows[0]]
-header_lower = [h.lower() for h in header]
-lookup       = tuple(x.lower() for x in ("טלפון", "מספר פלאפון", "פלאפון", "phone", "מספר"))
-try:
-    phone_idx = next(i for i, h in enumerate(header_lower) if h in lookup)
-except StopIteration:
-    phone_idx = 1  # ברירת מחדל לעמודה B
+        header = [str(c).strip() for c in rows[0]]
+        phone_idx = _find_phone_col(header)
 
-
-        return {
+        allowed = {
             only_digits(r[phone_idx])
             for r in rows[1:]
             if len(r) > phone_idx and only_digits(r[phone_idx])
         }
 
+        # לוג קצר לבקרה
+        if allowed:
+            sample = list(allowed)[:5]
+            logging.info("Loaded %d allowed phones from Sheets. Samples: %s", len(allowed), sample)
+        else:
+            logging.info("No allowed phones found in Sheets (after normalization).")
+
+        return allowed
+
     except Exception:
         logging.exception("Failed to load allowed phones from Sheets")
         return None
+
+def _load_allowed_from_excel() -> set[str]:
+    """גיבוי: טוען טלפונים מורשים מ-allowed_users.xlsx (אם קיים)."""
+    if not os.path.exists(LOCAL_ALLOWED_FILE):
+        return set()
+    try:
+        df = pd.read_excel(LOCAL_ALLOWED_FILE, dtype=str)
+    except Exception:
+        logging.exception("Failed to read local allowed Excel")
+        return set()
+
+    cols = [c for c in df.columns if any(k in str(c).lower() for k in LOCAL_PHONE_COLS)]
+    if not cols:
+        return set()
+
+    phone_col = cols[0]
+    allowed = {only_digits(str(v)) for v in df[phone_col] if only_digits(str(v))}
+    logging.info("Loaded %d allowed phones from local Excel.", len(allowed))
+    return allowed
+
+def is_user_authorized(phone: str) -> bool:
+    """True אם המספר (אחרי נירמול) מופיע ברשימת המורשים (Sheets או Excel מקומי)."""
+    clean = only_digits(phone)
+    allowed = _load_allowed_from_sheets()
+    if allowed is None:
+        allowed = _load_allowed_from_excel()
+    return clean in allowed
+
+# ───────── דיבאג/תצוגה: החזרת כל תוכן הגיליון כמסגרת נתונים ─────────
+def get_allowed_sheet_dataframe() -> pd.DataFrame | None:
+    """
+    מחזיר את כל תוכן הגיליון (לשימוש ב-UI: st.dataframe).
+    אם אין גישה/ID – מחזיר None.
+    """
+    sheet_id = os.getenv(SPREADSHEET_ID_ENV)
+    if not sheet_id:
+        return None
+    try:
+        creds, _ = google.auth.default(scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_key(sheet_id)
+        ws = _pick_worksheet(sh)
+
+        rows = ws.get_all_values() or []
+        if not rows:
+            return pd.DataFrame()
+
+        header = [str(c).strip() for c in rows[0]]
+        data = rows[1:]
+        df = pd.DataFrame(data, columns=header)
+        return df
+    except Exception:
+        logging.exception("Failed to fetch allowed sheet dataframe")
+        return None
+
 
 def _load_allowed_from_excel() -> set[str]:
     """גיבוי: טוען טלפונים מורשים מ-allowed_users.xlsx (אם קיים לצד האפליקציה)."""
