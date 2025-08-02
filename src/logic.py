@@ -18,11 +18,8 @@ WORKSHEET_TITLE_ENV  = "WORKSHEET_TITLE"   # שם הלשונית (לדוג׳ 'ג
 LOCAL_ALLOWED_FILE   = "allowed_users.xlsx"  # קובץ גיבוי במידה ואין Sheets
 LOCAL_PHONE_COLS     = ("טלפון", "phone", "מספר")  # מילות מפתח לכותרת עמודת טלפון
 
-# Scopes ל־Sheets + Drive (לקריאה בלבד)
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
-    "https://www.googleapis.com/auth/drive.readonly",
-]
+print(">>> DEBUG ENV SPREADSHEET_ID =", os.getenv("SPREADSHEET_ID"))
+print(">>> DEBUG ENV WORKSHEET_TITLE =", os.getenv("WORKSHEET_TITLE"))
 
 
 logging.info("ENV SPREADSHEET_ID = %s", os.getenv("SPREADSHEET_ID"))
