@@ -1,154 +1,135 @@
-# ───────────────────────────────────────────────────────────
-# app.py – מיזוג טלפונים 💎
-# ───────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────
+# app.py – מיזוג טלפונים 💎   (2025-08-03)
+# ───────────────────────────────────────────────
 from __future__ import annotations
 
-import os
-import re
-import gc
-import logging
-import tempfile
-import time
+# 1) IMPORTS & CONFIG
+import os, re, time, logging, tempfile, secrets, requests, gc
 from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 import streamlit as st
-import requests
-import secrets
+from dotenv import load_dotenv
 
 from logic import (
-    # עמודות/קבועים מהלוגיקה
     NAME_COL, PHONE_COL, COUNT_COL, SIDE_COL, GROUP_COL,
     MIN_SCORE_DISPLAY, MAX_DISPLAYED, AUTO_SELECT_TH,
-    # פונקציות לוגיקה
     load_excel, to_buf, format_phone, normalize,
     compute_best_scores, full_score, is_user_authorized,
 )
 
-# ───────── GREEN-API secrets (env / Secret Manager) ─────────
-GREEN_ID    = os.getenv("GREEN_ID")
-GREEN_TOKEN = os.getenv("GREEN_TOKEN")
-if not GREEN_ID or not GREEN_TOKEN:
-    logging.warning("GREEN_ID / GREEN_TOKEN not set. OTP sending will fail.")
+# Load environment variables (.env) from project root or src/
+ENV_PATH = (Path(__file__).resolve().parent.parent / ".env")
+if not ENV_PATH.exists():
+    ENV_PATH = Path(__file__).resolve().parent / ".env"
+load_dotenv(ENV_PATH, override=False)
 
+PAGE_TITLE = "מיזוג טלפונים 💎"
+CODE_TTL_SECONDS = 300
+MAX_AUTH_ATTEMPTS = 5  # הוספה מהקובץ השני
+DEV_MODE   = os.getenv("DEV_MODE", "0") == "1"
+GREEN_ID   = os.getenv("GREEN_API_ID") or os.getenv("GREEN_ID")
+GREEN_TOK  = os.getenv("GREEN_API_TOKEN") or os.getenv("GREEN_TOKEN")
+PHONE_RE   = re.compile(r"^0\d{9}$")
+PHONE_PATTERN = PHONE_RE  # alias מהקובץ השני
 
-# ───────── הגדרות בסיסיות ─────────
-PAGE_TITLE        = "מיזוג טלפונים 💎"
-CODE_TTL_SECONDS  = 300
-MAX_AUTH_ATTEMPTS = 5
-PHONE_PATTERN     = re.compile(r"^0\d{9}$")
-ADMIN_WHATSAPP    = "972507676706"
-
-# לוגים: ברירת מחדל INFO; אפשר לשלוט ע"י ENV LOG_LEVEL=DEBUG/INFO/WARNING
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
+logging.basicConfig(level=logging.INFO)
+logging.info("GREEN creds present? ID=%s TOKEN=%s", bool(GREEN_ID), bool(GREEN_TOK))
 
 st.set_page_config(page_title=PAGE_TITLE, layout="wide")
 
-# ───────── אחסון זמני (חוסך זיכרון ב־Streamlit) ─────────
-# תיקיית עבודה כללית, ואז מחלקים לפי טלפון משתמש
+# 2) HELPERS & IO
 TMP_ROOT = Path(tempfile.gettempdir()) / "merge_app"
-TMP_ROOT.mkdir(parents=True, exist_ok=True)
+TMP_ROOT.mkdir(exist_ok=True)
 
 def _user_root() -> Path:
-    """תיקיית עבודה פר־משתמש (ע״פ טלפון אחרי לוגין)."""
-    phone = st.session_state.get("phone", "anon")
-    p = TMP_ROOT / phone
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+    """Temporary folder per-user by phone."""
+    root = TMP_ROOT / st.session_state.get("phone", "anon")
+    root.mkdir(exist_ok=True)
+    return root
 
-def save_tmp(uploaded_file, subfolder: str, fname: str) -> Path:
-    """
-    שומר קובץ upload אל tmp/<phone>/<subfolder>/<fname> ומחזיר נתיב.
-    """
-    base = _user_root() / subfolder
-    base.mkdir(parents=True, exist_ok=True)
-    path = base / fname
-    path.write_bytes(uploaded_file.getbuffer())
+def save_tmp(uploaded, sub: str, fname: str) -> Path:
+    """Save uploaded file to tmp and return path."""
+    path = _user_root() / sub / fname
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(uploaded.getbuffer())
     return path
 
 @st.cache_data(show_spinner=False)
-def read_table(path_str: str) -> pd.DataFrame:
-    """
-    קריאת קובץ (xlsx/csv) מהדיסק – תוצאה נשמרת בקאש.
-    משתמשים ב-load_excel מהלוגיקה כדי להשאיר את כל האינטליגנציה במקום אחד.
-    """
-    p = Path(path_str)
-    with open(p, "rb") as f:
+def read_table(path: str) -> pd.DataFrame:
+    """Read Excel/CSV and normalize via logic.load_excel."""
+    with open(path, "rb") as f:
         df = load_excel(f)
-    # נסיון לחסוך זיכרון בעמודת הטלפון
     try:
         df[PHONE_COL] = df[PHONE_COL].astype("string[pyarrow]")
     except Exception:
         pass
     return df
 
-def persist_guests(df: pd.DataFrame) -> None:
-    """
-    שומר את DataFrame המוזמנים חזרה לקובץ ושוטף קאש –
-    כדי שהטעינה הבאה תראה את העדכון.
-    """
-    path = Path(st.session_state["guests_path"])
-    buf: BytesIO = to_buf(df)
-    path.write_bytes(buf.getvalue())
-    st.cache_data.clear()
-
-def get_contacts_df() -> pd.DataFrame:
-    return read_table(st.session_state["contacts_path"])
-
-def get_guests_df() -> pd.DataFrame:
-    return read_table(st.session_state["guests_path"])
-
-def save_guests_df(df: pd.DataFrame) -> None:
-    persist_guests(df)
-
-# ───────── איתור קבצי עיצוב/נכסים (styles / assets) ─────────
-HERE = Path(__file__).resolve().parent  # .../src
-
-def find_up(start: Path, subdir: str, fname: str) -> Path | None:
-    """
-    מחפש subdir/fname בתיקייה הנתונה וכל ה־parents שלה.
-    עובד בלוקאלי וגם ב־Cloud Run (שינויים של working dir).
-    """
+# Utility to find assets (e.g., Joni.png)
+def find_up(start: Path, subdir: str, fname: str) -> Optional[Path]:
+    """Search for subdir/fname from start upwards."""
     for base in (start, *start.parents):
         fp = base / subdir / fname
         if fp.is_file():
             return fp
     return None
 
+# Session-state wrappers
+def get_contacts_df() -> pd.DataFrame:
+    """Load contacts DataFrame or stop if not uploaded."""
+    p = st.session_state.get("contacts_path")
+    if not p:
+        st.error("לא הועלה קובץ אנשי קשר."); st.stop()
+    return read_table(p)
 
-def find_css(fname: str) -> Path | None:
-    """CSS מתוך styles – מנסה גם מה־cwd (לוקאל) וגם מ־HERE (שרת)."""
-    return find_up(HERE, "styles", fname) or find_up(Path.cwd(), "styles", fname)
+def get_guests_df() -> pd.DataFrame:
+    """Load guests DataFrame or stop if not uploaded."""
+    p = st.session_state.get("guests_path")
+    if not p:
+        st.error("לא הועלה קובץ מוזמנים."); st.stop()
+    return read_table(p)
 
-# ───────── טעינת style.css ─────────
-css_path = find_css("style.css")
-if css_path:
-    st.markdown(f"<style>{css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
-else:
-    st.error("⚠️ style.css לא נמצא – בדוק את מבנה התיקיות")
+def persist_guests(df: pd.DataFrame) -> None:
+    """Save guests DataFrame back to file and clear cache."""
+    buf = to_buf(df)
+    Path(st.session_state["guests_path"]).write_bytes(buf.getvalue())
+    st.cache_data.clear()
 
-# ───────── כלי עזר ─────────
+# Utility functions
 def normalize_phone_basic(p: str) -> Optional[str]:
     d = re.sub(r"\D", "", p or "")
-    return d if PHONE_PATTERN.match(d) else None
+    return d if PHONE_RE.match(d) else None
 
 def send_code(phone: str, code: str):
+    """Send OTP via GREEN-API or log in DEV mode."""
     chat = ("972" + phone[1:] if phone.startswith("0") else phone) + "@c.us"
-    if not GREEN_ID or not GREEN_TOKEN:
-        raise RuntimeError("GREEN-API credentials are missing")
-    url  = f"https://api.green-api.com/waInstance{GREEN_ID}/sendMessage/{GREEN_TOKEN}"
-    try:
-        requests.post(url, json={"chatId": chat, "message": f"קוד האימות שלך: {code}"}, timeout=10)
-    except Exception as e:
-        logging.exception("Failed to send OTP via GREEN-API")
-        raise
+    if DEV_MODE and not (GREEN_ID and GREEN_TOK):
+        logging.info("[DEV] OTP %s → %s", code, chat)
+        return
+    if not (GREEN_ID and GREEN_TOK):
+        raise RuntimeError("GREEN API creds missing")
+    url = f"https://api.green-api.com/waInstance{GREEN_ID}/sendMessage/{GREEN_TOK}"
+    requests.post(url, json={"chatId": chat, "message": f"קוד האימות שלך: {code}"}, timeout=10)
 
 def force_rerun():
+    """Utility function for forcing rerun - מהקובץ השני"""
     st.rerun()
-def load_login_css():
+
+# 3) CSS INJECTION & LOGIN CSS
+
+def inject_css() -> None:
+    """Inject external CSS from styles/ directory."""
+    base = Path(__file__).resolve().parent.parent / "styles"
+    for fname in ("style.css",):
+        css_path = base / fname
+        if css_path.is_file():
+            st.markdown(f"<style>{css_path.read_text('utf-8')}</style>", unsafe_allow_html=True)
+
+def load_login_css() -> None:
+    """Inject login page CSS - שילוב משני הקבצים עם השיפורים מהקובץ השני"""
     login_css = """
     /* הסתרת header של streamlit */
     .stAppHeader, .stAppToolbar, header[data-testid="stHeader"], .stDeployButton {display:none!important;}
@@ -170,6 +151,22 @@ def load_login_css():
       border-radius: 20px!important;
       box-shadow: 0 10px 30px rgba(0,0,0,0.1)!important;
       margin-top: 3rem!important;
+    }
+    
+    /* הסתרת מספר תווים ושורת עזרה */
+    .stTextInput > label > div[data-testid="InputInstructions"] {
+      display: none!important;
+    }
+    .stTextInput > div > div > div[data-testid="InputInstructions"] {
+      display: none!important;
+    }
+    div[data-testid="InputInstructions"] {
+      display: none!important;
+    }
+    
+    /* רכוז הכל */
+    .stMarkdown, .stTextInput, .stButton {
+      text-align: center!important;
     }
     
     /* אייקון עגול */
@@ -224,6 +221,12 @@ def load_login_css():
       font-family: monospace!important;
     }
     
+    /* מקלדת מספרים למובייל */
+    input[data-testid*="phone"], input[data-testid*="code"] {
+      inputmode: numeric !important;
+      pattern: [0-9]* !important;
+    }
+    
     .stTextInput > div {
       display: flex!important;
       justify-content: center!important;
@@ -239,6 +242,12 @@ def load_login_css():
       outline: none!important;
       max-width: 350px!important;
       width: 100%!important;
+    }
+    
+    .stTextInput {
+      border: none!important;
+      background: transparent!important;
+      box-shadow: none!important;
     }
     
     .stTextInput > div > div > input:focus {
@@ -269,430 +278,471 @@ def load_login_css():
       box-shadow: 0 6px 18px rgba(94,131,216,.35)!important;
     }
     
-    /* הודעות שגיאה מותאמות */
-    .unauthorized-message {
-      background: #ffe6e6!important;
-      border: 2px solid #ff4444!important;
-      border-radius: 12px!important;
-      padding: 20px!important;
-      text-align: center!important;
-      margin: 20px auto!important;
-      max-width: 350px!important;
-    }
-    
-    .unauthorized-title {
-      color: #cc0000!important;
-      font-size: 18px!important;
-      font-weight: bold!important;
-      margin-bottom: 10px!important;
-    }
-    
-    .unauthorized-text {
-      color: #666!important;
-      font-size: 14px!important;
-      margin-bottom: 15px!important;
-    }
-    
-    .whatsapp-button {
-      background: #25D366!important;
-      color: white!important;
-      padding: 12px 20px!important;
-      border-radius: 10px!important;
-      text-decoration: none!important;
-      display: inline-flex!important;
-      align-items: center!important;
-      gap: 8px!important;
-      font-weight: 600!important;
-      transition: all 0.2s!important;
+    /* הסתרת קוביות לבנות וקווים */
+    .element-container[data-testid] {
+      background: transparent!important;
       border: none!important;
-      font-size: 14px!important;
+      box-shadow: none!important;
     }
     
-    .whatsapp-button:hover {
-      background: #1da851!important;
-      transform: translateY(-1px)!important;
-      text-decoration: none!important;
-      color: white!important;
+    /* הודעות הצלחה וכשלון - CSS חזק יותר */
+    .stAlert, .stSuccess, .stError, .stWarning, 
+    div[data-testid="stAlert"], div[data-testid="stSuccess"], 
+    div[data-testid="stError"], div[data-testid="stWarning"] {
+      max-width: 350px!important;
+      margin: 10px auto!important;
+      text-align: center!important;
+      display: flex!important;
+      justify-content: center!important;
+      width: 350px!important;
+    }
+    
+    .stAlert > div, .stSuccess > div, .stError > div, .stWarning > div,
+    div[data-testid="stAlert"] > div, div[data-testid="stSuccess"] > div,
+    div[data-testid="stError"] > div, div[data-testid="stWarning"] > div {
+      font-size: 14px!important;
+      padding: 8px 16px!important;
+      border-radius: 8px!important;
+      text-align: center!important;
+      max-width: 350px!important;
+      width: 100%!important;
+      margin: 0 auto!important;
+    }
+    
+    /* CSS ספציפי מאוד להודעת הצלחה */
+    .main .block-container .stSuccess {
+      max-width: 350px!important;
+      width: 350px!important;
+      margin: 10px auto!important;
+    }
+    
+    .main .block-container .stSuccess > div {
+      max-width: 350px!important;
+      width: 100%!important;
+      text-align: center!important;
     }
     """
+    
     st.markdown(f"<style>{login_css}</style>", unsafe_allow_html=True)
 
 def load_file_uploader_css():
+    """CSS מותאם לתיבות העלאת קבצים - נקיות ומסודרות - מהקובץ השני"""
     file_css = """
-    /* 1) איפוס מעטפת ה-uploader */
-    [data-testid="stFileUploader"] > div {
-      padding: 0 !important;
-      background: transparent !important;
-      box-shadow: none !important;
-      border: none !important;
+    /* ========================================
+       עיצוב תיבות העלאת קבצים - גרסה נקייה
+       ======================================== */
+    
+    /* איפוס כללי */
+    div[data-testid="stFileUploader"] {
+        margin: 15px 0 !important;
+        padding: 0 !important;
     }
-
-    /* 2) עיצוב הדרופזון עצמו - עם הגרדיאנט שלך */
-    [data-testid="stFileUploadDropzone"]{
-      position: relative;
-      border: 2px dashed rgba(255,255,255,0.3) !important;
-      border-radius: 16px !important;
-      padding: 26px 18px !important;
-      background: linear-gradient(45deg, #667eea 0%, #764ba2 100%) !important;
-      transition: all 0.3s ease;
-      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+    
+    /* הסתרת הlabel הראשי */
+    div[data-testid="stFileUploader"] > label {
+        display: none !important;
     }
-
-    /* הובר/פוקוס */
-    [data-testid="stFileUploadDropzone"]:hover{
-      transform: translateY(-2px) !important;
-      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
-      border-color: rgba(255,255,255,0.6) !important;
+    
+    /* איפוס האזור החיצוני */
+    div[data-testid="stFileUploader"] > div {
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        background: transparent !important;
     }
-
-    /* 3) מסתירים את הטקסט/כפתור המובנים */
-    [data-testid="stFileDropzoneInstructions"]{
-      visibility: hidden;
-      height: 72px;
+    
+    /* עיצוב אזור הdrop zone */
+    section[data-testid="stFileUploadDropzone"] {
+        border: 2px dashed #dee2e6 !important;
+        border-radius: 12px !important;
+        background: white !important;
+        padding: 20px 15px !important;
+        text-align: center !important;
+        transition: all 0.3s ease !important;
+        margin: 0 !important;
+        height: auto !important;
+        min-height: 80px !important;
     }
-
-    [data-testid="stFileUploadDropzone"] button{
-      display: none !important;
+    
+    /* הוברר על אזור הdrop */
+    section[data-testid="stFileUploadDropzone"]:hover {
+        border-color: #4A90E2 !important;
+        background: #f8f9fa !important;
+        box-shadow: 0 2px 8px rgba(74,144,226,0.15) !important;
     }
-
-    /* 4) שכבת-על עברית יפה */
-    [data-testid="stFileUploadDropzone"]::after{
-      content: "📄 גרור קובץ או לחץ לבחירה\\A Excel/CSV • עד 200MB";
-      white-space: pre-line;
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      text-align: center;
-      font-weight: 600;
-      font-size: 0.95rem;
-      color: white;
-      pointer-events: none;
-      direction: rtl;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    
+    /* מיכל ההוראות */
+    div[data-testid="stFileDropzoneInstructions"] {
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 8px !important;
     }
-
-    /* 5) כאשר יש קובץ - מסתירים את השכבה */
-    [data-testid="stFileUploader"]:has([data-testid="stUploadedFile"]) [data-testid="stFileUploadDropzone"]::after{
-      content: "";
+    
+    div[data-testid="stFileDropzoneInstructions"] > div {
+        margin: 0 !important;
+        padding: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 4px !important;
     }
-
-    /* 6) טקסטים שונים לכל תיבה */
-    [data-testid="stFileUploader"]:nth-of-type(1) [data-testid="stFileUploadDropzone"]::after{
-      content: "📇 בחר קובץ אנשי קשר\\A Excel/CSV • עד 200MB";
+    
+    /* הטקסט המרכזי - החלפה */
+    div[data-testid="stFileDropzoneInstructions"] > div > span {
+        visibility: hidden !important;
+        position: absolute !important;
     }
-
-    [data-testid="stFileUploader"]:nth-of-type(2) [data-testid="stFileUploadDropzone"]::after{
-      content: "🎉 בחר קובץ מוזמנים\\A Excel/CSV • עד 200MB";
+    
+    div[data-testid="stFileDropzoneInstructions"] > div > span::before {
+        content: "📄 לחץ כאן או גרור קובץ Excel" !important;
+        visibility: visible !important;
+        position: relative !important;
+        color: #6c757d !important;
+        font-size: 13px !important;
     }
-
-    /* 7) כשנבחר קובץ - שינוי צבע לירוק */
-    [data-testid="stFileUploader"]:has([data-testid="stUploadedFile"]) [data-testid="stFileUploadDropzone"]{
-      background: linear-gradient(45deg, #11998e 0%, #38ef7d 100%) !important;
-      box-shadow: 0 4px 15px rgba(17, 153, 142, 0.3) !important;
+    
+    /* הטקסט התחתון - החלפה */
+    div[data-testid="stFileDropzoneInstructions"] > div > small {
+        visibility: hidden !important;
+        position: absolute !important;
     }
-
-    /* 8) עיצוב שם הקובץ שנבחר */
-    [data-testid="stUploadedFile"] {
-      background: rgba(255,255,255,0.9) !important;
-      border-radius: 8px !important;
-      padding: 8px 12px !important;
-      margin-top: 8px !important;
-      border: none !important;
+    
+    div[data-testid="stFileDropzoneInstructions"] > div > small::before {
+        content: "xlsx, xls, csv" !important;
+        visibility: visible !important;
+        position: relative !important;
+        color: #adb5bd !important;
+        font-size: 11px !important;
     }
-
-    /* 9) מובייל */
-    @media (max-width: 420px){
-      [data-testid="stFileUploadDropzone"]{
-        padding: 22px 14px !important;
-      }
-      [data-testid="stFileUploadDropzone"]::after{
-        font-size: 0.9rem;
-      }
+    
+    /* הכפתור Browse files */
+    section[data-testid="stFileUploadDropzone"] button[data-testid="baseButton-secondary"] {
+        background: #f8f9fa !important;
+        border: 1px solid #ced4da !important;
+        border-radius: 6px !important;
+        padding: 6px 12px !important;
+        font-size: 11px !important;
+        color: transparent !important;
+        cursor: pointer !important;
+        transition: all 0.2s ease !important;
+        margin-top: 8px !important;
+        position: relative !important;
+        height: 28px !important;
+        min-height: 28px !important;
+    }
+    
+    /* הוברר על הכפתור */
+    section[data-testid="stFileUploadDropzone"] button[data-testid="baseButton-secondary"]:hover {
+        background: #e9ecef !important;
+        transform: translateY(-1px) !important;
+        border-color: #4A90E2 !important;
+    }
+    
+    /* הטקסט בכפתור */
+    section[data-testid="stFileUploadDropzone"] button[data-testid="baseButton-secondary"]::after {
+        content: "🗂️ עיון בקבצים" !important;
+        color: #495057 !important;
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        font-size: 11px !important;
+        white-space: nowrap !important;
+    }
+    
+    /* תצוגת הקובץ שנבחר */
+    div[data-testid="stFileUploader"] span[title] {
+        background: #d1ecf1 !important;
+        border: 1px solid #bee5eb !important;
+        border-radius: 6px !important;
+        padding: 4px 8px !important;
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        color: #0c5460 !important;
+        display: inline-block !important;
+        margin-top: 8px !important;
+        max-width: 95% !important;
+        word-break: break-all !important;
     }
     """
+
     st.markdown(f"<style>{file_css}</style>", unsafe_allow_html=True)
 
-# ───────── תמונת המדריך ─────────
-JONI_IMG = find_up(HERE, "assets", "Joni.png") or find_up(Path.cwd(), "assets", "Joni.png")
+inject_css()
 
-# ───────── משתנה מדריך ─────────
+# 4) CONTACTS GUIDE
+
 if "show_contacts_guide" not in st.session_state:
     st.session_state.show_contacts_guide = False
 
-
-def render_contacts_guide():
-    col_text, col_img = st.columns([1, 2])
-
+def render_contacts_guide() -> None:
+    """Display instructions to download contacts file."""
+    col_text, col_img = st.columns([1,2])
     with col_text:
         st.header("📝 מדריך הורדת קובץ אנשי קשר")
-        st.markdown("""
-**שלבי הורדה:**
-1. התחברו מהמחשב (לא מהטלפון).  
-2. התקינו את התוסף **Joni**: <https://joni.pyrogss.com>  
-3. פתחו **WhatsApp Web**.  
-4. לחצו על סמל J → **אנשי קשר** → **שמירה לקובץ אקסל**.  
-5. הקובץ יורד למחשב.
+        st.markdown(
+            """
+1. התחברו מהמחשב (לא מהטלפון).
+2. התקינו את התוסף **Joni**.
+3. פתחו **WhatsApp Web**.
+4. לחצו על סמל J → **אנשי קשר** → **שמירה לקובץ אקסל**.
+5. הקובץ יישמר.
 """, unsafe_allow_html=True)
         if st.button("✖️ סגור מדריך"):
             st.session_state.show_contacts_guide = False
             st.rerun()
-
     with col_img:
-        if JONI_IMG:
-            st.image(str(JONI_IMG), width=550, use_container_width=False)
-        else:
-            st.warning("⚠️ Joni.png לא נמצא – שים אותו ב-assets/")
+        img = find_up(Path(__file__).resolve().parent, "assets", "Joni.png")
+        if img: st.image(str(img), width=400)
+        else: st.warning("⚠️ אנא הוסף assets/Joni.png")
 
-# ───────── תהליך התחברות ─────────
+# 5) AUTHENTICATION FLOW - שילוב של שני הקבצים עם השיפורים מהקובץ השני
+
 def auth_flow() -> bool:
-    if st.session_state.get("auth_ok"):
+    """Handle phone entry, OTP send & verify, gating by is_user_authorized."""
+    # ensure authentication state initialized
+    if "auth_state" not in st.session_state:
+        st.session_state["auth_state"] = "phone"
+    if st.session_state.get("auth_ok"): 
         return True
-
+    
     load_login_css()
-    state = st.session_state.setdefault("auth_state", "phone")
-    icon      = "💬" if state == "phone" else "🔐"
-    subtitle  = "התחבר באמצעות מספר טלפון" if state == "phone" else "הכנס את הקוד שנשלח"
-    label_txt = "מספר טלפון" if state == "phone" else "קוד אימות"
+    
+    # track current step: 'phone' or 'code'
+    state = st.session_state["auth_state"]
+    
+    # כותרות מהקובץ השני - עם אייקונים ועיצוב משופר
+    icon = "💬" if state == "phone" else "🔐"
+    subtitle = "התחבר באמצעות מספר הטלפון שלך" if state == "phone" else "הכנס את הקוד שנשלח אליך"
+    label = "מספר טלפון" if state == "phone" else "קוד אימות"
 
+    # אייקון עגול
     st.markdown(f'<div class="auth-icon">{icon}</div>', unsafe_allow_html=True)
     st.markdown('<div class="auth-title">מערכת שילוב רשימות</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="auth-subtitle">{subtitle}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="phone-label">{label_txt}</div>', unsafe_allow_html=True)
-
+    st.markdown(f'<div class="phone-label">{label}</div>', unsafe_allow_html=True)
+    
     if state == "phone":
         phone = st.text_input("מספר טלפון", placeholder="05X-XXXXXXX",
                               max_chars=10, key="phone_input", label_visibility="hidden")
+        
+        # הוספת מקלדת מספרים למובייל - מהקובץ השני
+        st.markdown("""
+        <script>
+        document.querySelector('input[data-testid*="phone"]').inputMode = 'numeric';
+        document.querySelector('input[data-testid*="phone"]').pattern = '[0-9]*';
+        </script>
+        """, unsafe_allow_html=True)
+        
         if st.button("שלח קוד אימות 💬"):
             p = normalize_phone_basic(phone)
             if not p:
                 st.error("מספר לא תקין.")
-            else:
-                try:
-                    if not is_user_authorized(p):
-                        wa = f"https://wa.me/{ADMIN_WHATSAPP}?text=אני רוצה להצטרף למערכת"
-                        st.markdown(f"""
-<div class="unauthorized-message">
-   <div class="unauthorized-title">🚫 מספר לא מורשה</div>
-   <div class="unauthorized-text">פנה למנהל המערכת להוספתך</div>
-   <a href="{wa}" target="_blank" class="whatsapp-button">💬 צור קשר בוואטסאפ</a>
-</div>
-""", unsafe_allow_html=True)
-                    else:
-                        code = "".join(secrets.choice("0123456789") for _ in range(4))
-                        st.session_state.update(
-                            {"auth_code": code, "phone": p,
-                             "code_ts": time.time(), "auth_state": "code"}
-                        )
-                        send_code(p, code)
-                        st.success("הקוד נשלח.")
-                        force_rerun()
-                except Exception as e:
-                    st.error(f"שגיאה בבדיקת הרשאה: {e}")
-
-    else:  # state == code
-        entry   = st.text_input("קוד אימות", placeholder="4 ספרות", max_chars=4, label_visibility="hidden")
+                return False
+            # אימות משתמשים - מהקובץ הראשון
+            if not is_user_authorized(p):
+                st.error("🚫 מספר לא מורשה")
+                return False
+            code = "".join(secrets.choice("0123456789") for _ in range(4))
+            st.session_state.update({
+                "phone": p, "auth_code": code,
+                "code_ts": time.time(), "auth_state": "code"
+            })
+            send_code(p, code)
+            st.success("קוד נשלח!")
+            st.rerun()
+            
+    else:  # state == "code"
+        entry = st.text_input("קוד אימות", placeholder="הכנס קוד בן 4 ספרות", 
+                             max_chars=4, key="code_input", label_visibility="hidden")
+        
+        # הוספת מקלדת מספרים למובייל - מהקובץ השני
+        st.markdown("""
+        <script>
+        setTimeout(function() {
+            var inputs = document.querySelectorAll('input');
+            inputs.forEach(function(input) {
+                if (input.placeholder && input.placeholder.includes('קוד')) {
+                    input.inputMode = 'numeric';
+                    input.pattern = '[0-9]*';
+                }
+            });
+        }, 100);
+        </script>
+        """, unsafe_allow_html=True)
+        
         expired = (time.time() - st.session_state.code_ts) > CODE_TTL_SECONDS
-        if expired:
+        if expired: 
             st.warning("הקוד פג תוקף")
+            
         if st.button("אמת 🔓"):
             if expired:
                 st.error("הקוד פג תוקף")
+                return False
             elif entry == st.session_state.auth_code:
                 st.session_state.auth_ok = True
-                st.success("✅ התחברת בהצלחה!")
-                time.sleep(1); force_rerun()
+                # הודעת הצלחה מהקובץ השני
+                st.markdown('<div style="max-width: 350px; margin: 10px auto; padding: 8px 16px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; text-align: center; font-size: 14px; color: #155724;">✅ התחברת בהצלחה!</div>', unsafe_allow_html=True)
+                time.sleep(1)
+                st.rerun()
             else:
+                # הגבלת ניסיונות - מהקובץ השני
                 att = st.session_state.get("auth_attempts", 0) + 1
                 st.session_state.auth_attempts = att
                 if att >= MAX_AUTH_ATTEMPTS:
-                    st.error("נחרגת ממספר הניסיונות – נסה שוב מאוחר יותר")
-                    st.session_state.auth_state = "phone"; force_rerun()
+                    st.error("נחרגת ממספר הניסיונות המותר")
+                    # איפוס חזרה לשלב הטלפון
+                    st.session_state.auth_state = "phone"
+                    st.rerun()
                 else:
-                    st.error(f"קוד שגוי • נשארו {MAX_AUTH_ATTEMPTS - att} ניסיונות")
+                    st.error(f"קוד שגוי ({MAX_AUTH_ATTEMPTS - att} ניסיונות נותרו)")
+    
     return False
 
-# ======= MAIN APPLICATION =======
-if not auth_flow():
+# MAIN APPLICATION
+
+# אתחול אינדקס ברירת מחדל אם אין
+if "idx" not in st.session_state:
+    st.session_state["idx"] = 0
+
+if not auth_flow(): 
     st.stop()
 
-# אם ביקשו מדריך – מציגים במסך הראשי ועוצרים
-if st.session_state.get("show_contacts_guide"):
+# טעינת CSS לתיבות העלאת קבצים
+load_file_uploader_css()
+
+if st.session_state.show_contacts_guide:
     st.title(PAGE_TITLE)
     render_contacts_guide()
     st.stop()
 
-# ממשיכים לאפליקציה הרגילה
-load_file_uploader_css()
 st.title(PAGE_TITLE)
-# --- ביטול מרכזת ה‑TextInput מהלוגין + עיצוב קומפקטי לשדות הקטנים ---
-st.markdown("""
-<style>
-/* בעמוד הראשי: לא למרכז את כל ה‑TextInput של סטרימליט */
-[data-testid="stAppViewBlockContainer"] .stTextInput > div{
-  display:block !important;
-  justify-content:flex-start !important;
-}
-[data-testid="stAppViewBlockContainer"] .stTextInput > div > div{
-  max-width:none !important;
-  margin:0 !important;
-}
 
-/* עטיפה קומפקטית לימין לשדות הקטנים */
-.compact-right{ display:flex; justify-content:flex-end; }
-.compact-right .stTextInput input{
-  width:180px !important;
-  height:30px !important;
-  font-size:13px !important;
-  text-align:right !important;
-  padding:0 8px !important;
-  border:1px solid #cfd6dd !important;
-  border-radius:6px !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
+# FILE UPLOAD - שילוב של שני הגישות
 if "upload_confirmed" not in st.session_state:
     st.session_state.upload_confirmed = False
 
 if not st.session_state.upload_confirmed:
     with st.sidebar:
-        st.markdown("## 📂 העלאת קבצים")
-        st.markdown("---")
-
-        # כותרת + כפתור מדריך באותה שורה
-        title_col, btn_col = st.columns([0.6, 0.4])
-        with title_col:
-            st.markdown("### 👥 קובץ אנשי קשר")
-        with btn_col:
-            if st.button("📖מדריך להורדת הקובץ", key="contacts_guide_btn", use_container_width=True):
-                st.session_state.show_contacts_guide = True
-                st.rerun()
-
-        # תיבת העלאת קובץ אנשי קשר
+        st.subheader("📂 העלאת קבצים")
+        if st.button("📖 מדריך להורדת הקובץ", key="contacts_guide_btn"):
+            st.session_state.show_contacts_guide = True
+            st.rerun()
+        
+        # כותרות מפורטות מהקובץ השני
+        st.markdown("### 👥 קובץ אנשי קשר")
         contacts_file = st.file_uploader(
-            "קובץ אנשי קשר",
-            type=["xlsx", "xls", "csv"],
+            "קובץ אנשי קשר", 
+            type=["xlsx", "xls", "csv"], 
             key="contacts_uploader",
-            label_visibility="collapsed",
+            label_visibility="collapsed"
         )
-
-        # תיבת העלאת קובץ מוזמנים
+        
         st.markdown("### 🎉 קובץ מוזמנים")
         guests_file = st.file_uploader(
-            "קובץ מוזמנים",
-            type=["xlsx", "xls", "csv"],
+            "קובץ מוזמנים", 
+            type=["xlsx", "xls", "csv"], 
             key="guests_uploader",
-            label_visibility="collapsed",
+            label_visibility="collapsed"
         )
-
-        # סטטוס טעינת הקבצים (כאן אין more python‑expressions – רק if/else)
-        col1, col2 = st.columns(2)
-with col1:
-    if contacts_file:
-        st.success("✅ אנשי קשר נטען")
-    else:
-        st.info("⏳ ממתין לקובץ אנשי קשר")
-
-with col2:
-    if guests_file:
-        st.success("✅ מוזמנים נטען")
-    else:
-        st.info("⏳ ממתין לקובץ מוזמנים")
-
-# כפתור האישור
-confirm = st.button("✅ אשר קבצים", disabled=not (contacts_file and guests_file), use_container_width=True)
-
-if confirm:
-    with st.spinner("טוען קבצים…"):
-        # שומר קבצים לדיסק (tmp/<phone>/contacts|guests/...)
-        st.session_state["contacts_path"] = str(
-            save_tmp(contacts_file, "contacts", contacts_file.name)
-        )
-        st.session_state["guests_path"] = str(
-            save_tmp(guests_file, "guests", guests_file.name)
-        )
-
-        # טוען DataFrames פעם אחת (מהדיסק) ומחשב best_score – בלי לשמור אותם ב-session_state
-        contacts_df = read_table(st.session_state["contacts_path"])
-        guests_df   = read_table(st.session_state["guests_path"])
-
-        # בדיקת תקינות טלפון (כמו שהיה)
-        invalid_phones = []
-        for idx, row in guests_df.iterrows():
-            phone = str(row[PHONE_COL]).strip()
-            if phone and not normalize_phone_basic(phone):
-                invalid_phones.append(f"שורה {idx+1}: {row[NAME_COL]} - {phone}")
-        if invalid_phones:
-            for invalid in invalid_phones[:5]:
-                st.error(invalid)
-            if len(invalid_phones) > 5:
-                st.error(f"ועוד {len(invalid_phones)-5} שגיאות...")
-
-        # חישוב ציונים והטמעה בדאטה-פריים
-        guests_df["best_score"] = compute_best_scores(guests_df, contacts_df)
-
-        # לשמור את המצב המעודכן חזרה לקובץ ולהוציא מה־RAM
-        persist_guests(guests_df)
-
-        del contacts_df, guests_df, contacts_file, guests_file
-        gc.collect()
-
-    st.success("✅ הקבצים נטענו והמידע עודכן בהצלחה!")
-    st.session_state.upload_confirmed = True
-    st.rerun()
-
-
-
-if not st.session_state.upload_confirmed:
+        
+        if st.button("✅ אשר קבצים", disabled=not (contacts_file and guests_file), use_container_width=True):
+            with st.spinner("טוען קבצים…"):
+                # שמירה לקבצים זמניים - מהקובץ הראשון
+                st.session_state["contacts_path"] = str(save_tmp(contacts_file, "contacts", contacts_file.name))
+                st.session_state["guests_path"] = str(save_tmp(guests_file, "guests", guests_file.name))
+                
+                # טעינה לזיכרון גם - מהקובץ השני
+                st.session_state.contacts = read_table(st.session_state.contacts_path)
+                st.session_state.guests = read_table(st.session_state.guests_path)
+                
+                # חישוב ציונים
+                st.session_state.guests["best_score"] = compute_best_scores(
+                    st.session_state.guests, st.session_state.contacts
+                )
+                
+                # שמירה חזרה לקובץ
+                persist_guests(st.session_state.guests)
+                
+            st.session_state.upload_confirmed = True
+            st.rerun()
     st.stop()
 
+# SIDEBAR FILTERS - שילוב של שני הגישות
 with st.sidebar:
-    st.checkbox("רק חסרי מספר", key="filter_no", on_change=lambda: st.session_state.update(idx=0))
-
-df = get_guests_df()
-filtered_df = df.copy()
-
-if st.session_state.get("filter_no"):
-    filtered_df = filtered_df[filtered_df[PHONE_COL].str.strip() == ""]
-
-all_sides  = df[SIDE_COL].dropna().unique().tolist()
-all_groups = df[GROUP_COL].dropna().unique().tolist()
-
-with st.sidebar:
-    st.multiselect("סנן לפי צד", options=all_sides,  key="filter_sides")
-    st.multiselect("סנן לפי קבוצה", options=all_groups, key="filter_groups")
-
-if st.session_state.get("filter_sides"):
-    filtered_df = filtered_df[filtered_df[SIDE_COL].isin(st.session_state.filter_sides)]
-if st.session_state.get("filter_groups"):
-    filtered_df = filtered_df[filtered_df[GROUP_COL].isin(st.session_state.filter_groups)]
-
-filtered_total = len(filtered_df)
-complete_idx   = min(st.session_state.get("idx", 0), filtered_total)
-
-with st.sidebar:
-    st.markdown(f"**{complete_idx}/{filtered_total} הושלמו**")
-    st.progress(complete_idx / filtered_total if filtered_total else 0)
+    st.checkbox("רק חסרי מספר", key="filter_no", value=False, 
+                on_change=lambda: st.session_state.update(idx=0))
+    
+    # קבלת הנתונים - תמיכה בשתי הגישות
+    if "guests" in st.session_state:
+        # גישה מהקובץ השני - נתונים בזיכרון
+        df = st.session_state.guests.copy()
+        contacts = st.session_state.contacts.copy()
+    else:
+        # גישה מהקובץ הראשון - נתונים מקבצים
+        df = get_guests_df()
+        contacts = get_contacts_df()
+    
+    # סינון לפי חסרי מספר
+    if st.session_state.get("filter_no"):
+        df = df[df[PHONE_COL].str.strip() == ""]
+    
+    # סינונים נוספים - מהקובץ הראשון
+    all_sides = df[SIDE_COL].dropna().unique().tolist()
+    all_groups = df[GROUP_COL].dropna().unique().tolist()
+    
+    # multiselect עם keys - מהקובץ השני
+    selected_sides = st.multiselect("סנן לפי צד", options=all_sides, key="filter_sides")
+    selected_groups = st.multiselect("סנן לפי קבוצה", options=all_groups, key="filter_groups")
+    
+    # החלת הסינונים
+    if selected_sides:
+        df = df[df[SIDE_COL].isin(selected_sides)]
+    if selected_groups:
+        df = df[df[GROUP_COL].isin(selected_groups)]
+    
+    # Progress bar משופר
+    filtered_total = len(df)
+    idx = st.session_state.get("idx", 0)
+    idx = min(idx, filtered_total)  # וידוא שהאינדקס לא חורג
+    
+    st.markdown(f"**{idx}/{filtered_total} הושלמו**")
+    st.progress(idx / filtered_total if filtered_total else 0)
+    
+    # הורדת קובץ - תיקון הפונקציה
+    download_data = to_buf(df)
     st.download_button(
-        "💾 הורד Excel מלא",
-        data=to_buf(get_guests_df()),
-        file_name="רשימת_מוזמנים_מלאה.xlsx",
+        "💾 הורד Excel",
+        data=download_data,
+        file_name="רשימת_מסוננים.xlsx",
         use_container_width=True,
     )
 
-df = filtered_df.sort_values(["best_score", NAME_COL], ascending=[False, True])
-if "idx" not in st.session_state:
-    st.session_state.idx = 0
+# סינון וסידור הנתונים
+filtered_df = df.copy()
+# סידור לפי ציון ושם - מהקובץ השני
+filtered_df = filtered_df.sort_values(["best_score", NAME_COL], ascending=[False, True])
 
-if st.session_state.idx >= len(df):
+# MAIN LOOP - שילוב מתקדם של שני הקבצים
+if st.session_state.idx >= len(filtered_df):
     st.success("🎉 סיימנו!")
-    st.download_button("⬇️ הורד קובץ סופי", data=to_buf(get_guests_df()), file_name="רשימת_מוזמנים_סופית.xlsx", use_container_width=True)
+    # הורדה סופית - תיקון הפונקציה
+    final_data = st.session_state.guests if "guests" in st.session_state else get_guests_df()
+    final_download = to_buf(final_data)
+    st.download_button(
+        "⬇️ הורד תוצאה סופית", 
+        data=final_download, 
+        file_name="תוצאה_סופית.xlsx", 
+        use_container_width=True
+    )
     st.stop()
 
-cur = df.iloc[st.session_state.idx]
+cur = filtered_df.iloc[st.session_state.idx]
 
+# תצוגה משופרת של המוזמן הנוכחי - מהקובץ השני
 st.markdown(
     f"""
     ## {cur[NAME_COL]}
@@ -705,84 +755,70 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ─── חישוב התאמות ───
-matches     = get_contacts_df().copy()
-matches["score"] = matches["norm_name"].map(lambda c: full_score(cur.norm_name, c))
+# חישוב התאמות - שילוב של שני הקבצים
+matches = contacts.copy()
+matches["score"] = matches["norm_name"].apply(lambda c: full_score(cur.norm_name, c))
 
-# ─── בחירת מועמדים ───
-if matches["score"].max() == 100:
-    # אם יש התאמה מושלמת (100%), הצג עד 3 תוצאות עם score >= 90
-    candidates = (
-        matches[matches["score"] >= 90]
-        .sort_values(["score", NAME_COL], ascending=[False, True])
-        .head(3)
-    )
-else:
-    # אחרת – הצג את שלושת הגבוהים מעל סף 70%, ואם אין כאלה – את ששת הגבוהים
-    candidates = (
-        matches[matches["score"] >= MIN_SCORE_DISPLAY]
-        .sort_values(["score", NAME_COL], ascending=[False, True])
-        .head(3)
-    )
-    if candidates.empty:
-        candidates = (
-            matches[ matches["score"] >= MIN_SCORE_DISPLAY ]
-            .sort_values(["score", NAME_COL], ascending=[False, True])
-            .head(MAX_DISPLAYED)
-        )
+# אלגוריתם חכם לבחירת מועמדים - מהקובץ השני עם שיפורים
+candidates = matches[matches["score"] >= 90].sort_values(["score", NAME_COL], ascending=[False, True]).head(3)
+if candidates.empty:
+    # אם אין התאמות טובות, קח את הטובות ביותר
+    candidates = matches.sort_values(["score", NAME_COL], ascending=[False, True]).head(MAX_DISPLAYED)
 
-# ─── בניית אפשרויות לציון המשתמש ───
+# אופציות בחירה - שילוב משני הקבצים
 options = ["❌ ללא התאמה"] + [
-    f"{int(r.score)}% | {r[NAME_COL]} | {format_phone(r[PHONE_COL])}"
+    f"{int(r.score)}% | {r[NAME_COL]} | {format_phone(r[PHONE_COL])}" 
     for _, r in candidates.iterrows()
 ] + ["➕ הוסף ידני", "🔍 חפש אנשי קשר"]
 
+# בחירה אוטומטית חכמה - מהקובץ השני
+auto_select_index = 1 if not candidates.empty and candidates.iloc[0].score >= AUTO_SELECT_TH else 0
+
 choice = st.radio(
-    "בחר התאמה:", options,
-    index=1 if not candidates.empty and candidates.iloc[0].score >= AUTO_SELECT_TH else 0,
+    "בחר התאמה:", 
+    options,
+    index=auto_select_index,
     label_visibility="collapsed"
 )
 
+# טיפול בבחירות מיוחדות - שילוב משני הקבצים
 manual_phone = ""
 search_phone = ""
 
 if choice == "➕ הוסף ידני":
-    # שדה קטן, מיושר לימין, בלי תווית
-    st.markdown('<div class="compact-right">', unsafe_allow_html=True)
-    manual_phone = st.text_input(
-        "", placeholder="05XXXXXXXX", key="manual_phone", label_visibility="hidden"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
+    manual_phone = st.text_input("טלפון:", placeholder="05XXXXXXXX")
+    
 elif choice == "🔍 חפש אנשי קשר":
-    st.markdown('<div class="compact-right">', unsafe_allow_html=True)
-    query = st.text_input(
-        "", placeholder="שם/מספר", key="search_query", label_visibility="hidden"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
+    query = st.text_input("חיפוש:", placeholder="שם/מספר")
     if len(query) >= 2:
-        result = get_contacts_df()[
-            get_contacts_df().norm_name.str.contains(normalize(query))
-            | get_contacts_df()[PHONE_COL].str.contains(query)
+        # חיפוש מתקדם - מהקובץ הראשון
+        search_results = contacts[
+            contacts.norm_name.str.contains(normalize(query), na=False) |
+            contacts[PHONE_COL].str.contains(query, na=False)
         ].head(6)
+        
+        if not search_results.empty:
+            search_options = [
+                f"{r[NAME_COL]} | {format_phone(r[PHONE_COL])}" 
+                for _, r in search_results.iterrows()
+            ]
+            selected_result = st.selectbox("בחר איש קשר", search_options)
+            if selected_result:
+                search_phone = selected_result.split("|")[-1].strip()
 
-        if not result.empty:
-            # ה-Selectbox נשאר ברוחב רגיל, אפשר לצמצם עם st.columns אם תרצה
-            sel = st.selectbox(
-                "בחר איש קשר",
-                [f"{r[NAME_COL]} | {format_phone(r[PHONE_COL])}" for _, r in result.iterrows()],
-                key="search_select",
-            )
-            if sel:
-                search_phone = sel.split("|")[-1].strip()
+# כפתורי ניווט משופרים - מהקובץ השני
+col1, col2 = st.columns(2)
 
-
-# כפתורים מוחלפים - אישור גדול משמאל, חזרה קטן מימין
-col1, col2 = st.columns([2, 1])
 with col1:
-    if st.button("✅ אישור", use_container_width=True, key="approve_btn"):
+    if st.button("⬅️ חזרה", disabled=(st.session_state.idx == 0), use_container_width=True):
+        st.session_state.idx = max(0, st.session_state.idx - 1)
+        st.rerun()
+
+with col2:
+    if st.button("✅ אישור", use_container_width=True):
+        # קביעת הערך הנבחר
         val = None
+        
         if manual_phone:
             val = normalize_phone_basic(manual_phone)
         elif search_phone:
@@ -790,23 +826,26 @@ with col1:
         elif choice.startswith("❌"):
             val = ""
         else:
+            # נבחרה אפשרות מהרשימה
             val = choice.split("|")[-1].strip()
-
+        
         if val is not None:
-            guests_df = get_guests_df()
-            guests_df.at[cur.name, PHONE_COL] = format_phone(val) if val else ""
-            save_guests_df(guests_df)  # שמור לדיסק ונקה cache
+            # שמירה - תמיכה בשתי הגישות
+            formatted_phone = format_phone(val) if val else ""
+            
+            if "guests" in st.session_state:
+                # עדכון בזיכרון - מהקובץ השני
+                st.session_state.guests.at[cur.name, PHONE_COL] = formatted_phone
+            else:
+                # עדכון בקובץ - מהקובץ הראשון
+                g_df = get_guests_df()
+                g_df.at[cur.name, PHONE_COL] = formatted_phone
+                persist_guests(g_df)
+            
+            # מעבר להבא
             st.session_state.idx += 1
-            force_rerun()
+            st.rerun()
         else:
-            st.warning("אין ערך תקין.")
+            st.warning("אין ערך תקין לשמירה")
 
-with col2:
-    if st.button(
-        "⬅️ חזרה",
-        disabled=(st.session_state.idx == 0),
-        use_container_width=True,
-        key="back_btn"
-    ):
-        st.session_state.idx = max(0, st.session_state.idx - 1)
-        force_rerun()
+# ╰──────────────────────────────────────────────╯
