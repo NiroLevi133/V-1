@@ -14,6 +14,10 @@ from logic import (
 )
 
 PAGE_TITLE = " מיזוג טלפונים 💎"
+CODE_TTL_SECONDS  = 300
+MAX_AUTH_ATTEMPTS = 5
+PHONE_PATTERN     = re.compile(r"^0\d{9}$")
+
 class AppConfig:
     """
     מחלקה לניהול הגדרות האפליקציה
@@ -62,13 +66,13 @@ class AppConfig:
         # בדיקה שהטוקן לא קצר מדי
         if len(self.green_token) < 20:
             return False
-
-config = AppConfig()
         
         return True
-CODE_TTL_SECONDS  = 300
-MAX_AUTH_ATTEMPTS = 5
-PHONE_PATTERN     = re.compile(r"^0\d{9}$")
+
+
+config = AppConfig()
+    
+
 
 st.set_page_config(page_title=PAGE_TITLE, layout="wide")
 
@@ -223,46 +227,31 @@ def normalize_phone_basic(p: str) -> Optional[str]:
     return d if PHONE_PATTERN.match(d) else None
 
 def send_code(phone: str, code: str) -> bool:
-    """
-    פונקציה משופרת לשליחת קוד אימות
-    -> bool אומר שהפונקציה מחזירה True או False
-    """
+    """פונקציה משופרת לשליחת קוד אימות"""
     
     # בדיקה אם יש לנו נתוני התחברות תקינים
     if not config.is_valid():
-        st.error("🚫 שגיאה בהגדרות המערכת - נתוני GREEN-API חסרים")
-        return False  # יציאה מהפונקציה עם "כישלון"
+        st.error("🚫 שגיאה בהגדרות המערכת")
+        return False  # ← 8 רווחים (2 רמות הזחה)
     
-    try:  # ניסיון לבצע את השליחה - אם יש שגיאה, נטפל בה
-        
-        # הכנת מספר הטלפון לפורמט WhatsApp
-        if phone.startswith("0"):
-            # אם המספר מתחיל ב-0, נחליף ל-972 (קוד ישראל)
-            chat = "972" + phone[1:] + "@c.us"
+    try:  # ← 4 רווחים (1 רמה)
+        # הכנת מספר הטלפון
+        if phone.startswith("0"):  # ← 8 רווחים (2 רמות)
+            chat = "972" + phone[1:] + "@c.us"  # ← 12 רווחים (3 רמות)
         else:
             chat = phone + "@c.us"
         
-        # בניית כתובת ה-API
-        url = f"https://api.green-api.com/waInstance{config.green_id}/sendMessage/{config.green_token}"
-        
-        # הנתונים שנשלח ל-API
-        payload = {
-            "chatId": chat,                      # למי לשלוח
-            "message": f"קוד האימות שלך: {code}"  # מה לשלוח
-        }
-        
-        # שליחת הבקשה ל-API
-        # requests.post זה כמו "לשלוח מכתב" לשרת
+        # שליחת הבקשה
         response = requests.post(url, json=payload, timeout=10)
         
-        # בדיקת התגובה
-        if response.status_code == 200:  # 200 = הצלחה
-            print("✅ הודעת WhatsApp נשלחה בהצלחה")
-            return True
+        if response.status_code == 200:  # ← 8 רווחים
+            return True  # ← 12 רווחים
         else:
-            print(f"❌ שגיאה מ-GREEN-API: {response.status_code}")
-            st.error(f"שגיאה בשליחת הודעה: {response.status_code}")
-            return False
+            return False  # ← 12 רווחים
+            
+    except Exception as e:  # ← 4 רווחים
+        st.error("שגיאה בשליחת הודעה")
+        return False  # ← 8 רווחים
             
     except Exception as e:  # תפיסת שגיאות לא צפויות
         print(f"❌ שגיאה בשליחת הודעה: {e}")
