@@ -380,10 +380,10 @@ def top_matches(guest_norm: str, contacts_df: pd.DataFrame) -> pd.DataFrame:
             .head(3)
             .copy()
         )
-        # 4) fallback – אם אין כלל מועמדים ≥MIN_SCORE_DISPLAY, נציג לפחות מעל 55
+        # 4) fallback – אם אין כלל מועמדים ≥MIN_SCORE_DISPLAY, נציג לפחות מעל 50
         if candidates.empty:
             candidates = (
-                df[df["score"] >= 55]
+                df[df["score"] >= 50]
                 .sort_values(["score", NAME_COL], ascending=[False, True])
                 .head(3)
                 .copy()
