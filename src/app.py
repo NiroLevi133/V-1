@@ -51,8 +51,28 @@ st.set_page_config(page_title=PAGE_TITLE, layout="wide")
 
 def load_main_css():
     """טוען את ה-CSS הראשי של האפליקציה"""
-    with open("../styles/style.css", encoding="utf-8") as f:  # שינוי הנתיב
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    import os
+    
+    # רשימת נתיבים אפשריים
+    possible_paths = [
+        "../styles/style.css",      # נתיב מקורי (מקומי)
+        "styles/style.css",         # אם styles בתיקיה הנוכחית
+        "/app/styles/style.css",    # נתיב מלא ב-container
+        "./styles/style.css",       # נתיב יחסי אחר
+    ]
+    
+    for css_path in possible_paths:
+        try:
+            if os.path.exists(css_path):
+                with open(css_path, encoding="utf-8") as f:
+                    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+                    print(f"✅ CSS נטען בהצלחה מ: {css_path}")
+                    return
+        except Exception as e:
+            print(f"⚠️ לא ניתן לטעון CSS מ-{css_path}: {e}")
+            continue
+    
+    print("⚠️ לא נמצא קובץ CSS - ממשיך בלי עיצוב")
 
 def load_radio_css():
     """טוען CSS מעוצב לרדיו כפתורים קטנים ופשוטים ללא מסגרות"""
