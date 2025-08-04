@@ -19,56 +19,29 @@ MAX_AUTH_ATTEMPTS = 5
 PHONE_PATTERN     = re.compile(r"^0\d{9}$")
 
 class AppConfig:
-    """
-    מחלקה לניהול הגדרות האפליקציה
-    מה זה מחלקה? זה כמו "תבנית" שיוצרת אובייקט עם פונקציות ומשתנים
-    """
     def __init__(self):
-        # פונקציה שרצה כשיוצרים אובייקט חדש מהמחלקה
-        self.green_id = None      # משתנה לשמירת מזהה GREEN-API  
-        self.green_token = None   # משתנה לשמירת טוקן GREEN-API
-        self._load_credentials()  # קריאה לפונקציה שטוענת את הנתונים
+        self.green_id = None
+        self.green_token = None
+        self._load_credentials()
     
     def _load_credentials(self):
-        """
-        פונקציה שטוענת את פרטי ההתחברות
-        הקו התחתון _ אומר שזו פונקציה "פרטית" - רק לשימוש פנימי
-        """
-        import os  # ייבוא מודול לקריאת משתני סביבה
-        
-        # ניסיון לקרוא מ"משתני סביבה" - זה מקום בטוח לשמור סיסמאות
-        # מה זה משתני סביבה? זה כמו "תיבת דואר" שהמערכת שומרת בה מידע
+        import os
         self.green_id = os.getenv("GREEN_API_ID")
         self.green_token = os.getenv("GREEN_API_TOKEN")
         
-        # בדיקה אם הצלחנו לטעון את הנתונים
         if self.green_id and self.green_token:
             print("✅ נתוני GREEN-API נטענו בהצלחה")
         else:
             print("❌ לא נמצאו נתוני GREEN-API")
-            # הדפסת מידע לניפוי שגיאות (debug)
-            green_vars = [k for k in os.environ.keys() if 'GREEN' in k.upper()]
-            print(f"משתני GREEN שנמצאו: {green_vars}")
     
     def is_valid(self):
-        """
-        פונקציה שבודקת אם הנתונים תקינים
-        מחזירה True (נכון) או False (לא נכון)
-        """
-        # בדיקה בסיסית - האם יש נתונים
         if not self.green_id or not self.green_token:
             return False
-        
-        # בדיקה שהמזהה מכיל רק ספרות ולא קצר מדי
         if not self.green_id.isdigit() or len(self.green_id) < 10:
             return False
-        
-        # בדיקה שהטוקן לא קצר מדי
         if len(self.green_token) < 20:
             return False
-        
         return True
-
 
 config = AppConfig()
     
