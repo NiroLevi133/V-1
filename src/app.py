@@ -48,6 +48,7 @@ config = AppConfig()
 
 
 st.set_page_config(page_title=PAGE_TITLE, layout="wide")
+print("🔄 TEST VERSION 1.0 - 05/08/2025")
 
 def load_main_css():
     """טוען את ה-CSS הראשי של האפליקציה"""
