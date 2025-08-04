@@ -2,7 +2,7 @@ import time, secrets, re
 from datetime import datetime
 from typing import Optional, Tuple
 import base64
-
+import os
 import pandas as pd
 import streamlit as st
 import requests
@@ -20,28 +20,42 @@ PHONE_PATTERN     = re.compile(r"^0\d{9}$")
 
 class AppConfig:
     def __init__(self):
-        self.green_id = None
-        self.green_token = None
-        self._load_credentials()
-    
-    def _load_credentials(self):
-        import os
+            self.green_id = None
+            self.green_token = None
+            self._load_credentials()
+        
+    def _load_credentials(self):  # ניסיון לטעון מקובץ .env (למקומי)
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()  # טוען את קובץ ה-.env
+            print("✅ קובץ .env נטען")
+        except ImportError:
+            print("⚠️ python-dotenv לא מותקן")
+        except Exception as e:
+            print(f"⚠️ בעיה בטעינת .env: {e}")
+        
+        # קריאת משתני הסביבה (עובד גם אחרי load_dotenv)
         self.green_id = os.getenv("GREEN_API_ID")
         self.green_token = os.getenv("GREEN_API_TOKEN")
         
         if self.green_id and self.green_token:
             print("✅ נתוני GREEN-API נטענו בהצלחה")
+            print(f"🔍 ID: {self.green_id[:3]}...")
+            print(f"🔍 TOKEN: {self.green_token[:10]}...")
         else:
             print("❌ לא נמצאו נתוני GREEN-API")
-    
+            print("🔍 משתנים זמינים:")
+            green_vars = [k for k in os.environ.keys() if 'GREEN' in k.upper()]
+            print(f"   {green_vars}")
+        
     def is_valid(self):
-        if not self.green_id or not self.green_token:
-            return False
-        if not self.green_id.isdigit() or len(self.green_id) < 10:
-            return False
-        if len(self.green_token) < 20:
-            return False
-        return True
+            if not self.green_id or not self.green_token:
+                return False
+            if not self.green_id.isdigit() or len(self.green_id) < 10:
+                return False
+            if len(self.green_token) < 20:
+                return False
+            return True
 
 config = AppConfig()
     
