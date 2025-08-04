@@ -223,31 +223,50 @@ def normalize_phone_basic(p: str) -> Optional[str]:
 def send_code(phone: str, code: str) -> bool:
     """פונקציה משופרת לשליחת קוד אימות"""
     
-    # בדיקה אם יש לנו נתוני התחברות תקינים
     if not config.is_valid():
-        st.error("🚫 שגיאה בהגדרות המערכת")
-        return False  # ← 8 רווחים (2 רמות הזחה)
+        st.error("🚫 שגיאה בהגדרות המערכת - נתוני GREEN-API חסרים")
+        return False
     
-    try:  # ← 4 רווחים (1 רמה)
-        # הכנת מספר הטלפון
-        if phone.startswith("0"):  # ← 8 רווחים (2 רמות)
-            chat = "972" + phone[1:] + "@c.us"  # ← 12 רווחים (3 רמות)
-        else:
-            chat = phone + "@c.us"
+    try:
+        # ניקוי המספר מכל מה שלא ספרות
+        clean_phone = "".join(filter(str.isdigit, phone))
+        print(f"🔍 מספר מקורי: {phone}")
+        print(f"🔍 מספר נקי: {clean_phone}")
         
-        # שליחת הבקשה
+        # עיצוב לפורמט WhatsApp
+        if clean_phone.startswith("0"):
+            chat = "972" + clean_phone[1:] + "@c.us"
+        elif clean_phone.startswith("972"):
+            chat = clean_phone + "@c.us"
+        else:
+            chat = "972" + clean_phone + "@c.us"
+        
+        print(f"🔍 WhatsApp format: {chat}")
+        
+        url = f"https://api.green-api.com/waInstance{config.green_id}/sendMessage/{config.green_token}"
+        
+        payload = {
+            "chatId": chat,
+            "message": f"קוד האימות שלך: {code}"
+        }
+        
+        print(f"🔍 שולח ל-URL: {url}")
+        print(f"🔍 Payload: {payload}")
+        
         response = requests.post(url, json=payload, timeout=10)
         
-        if response.status_code == 200:  # ← 8 רווחים
-            return True  # ← 12 רווחים
+        print(f"🔍 Response Status: {response.status_code}")
+        print(f"🔍 Response Body: {response.text}")
+        
+        if response.status_code == 200:
+            print("✅ הודעת WhatsApp נשלחה בהצלחה")
+            return True
         else:
-            return False  # ← 12 רווחים
+            print(f"❌ שגיאה מ-GREEN-API: {response.status_code}")
+            st.error(f"שגיאה בשליחת הודעה: {response.status_code}")
+            return False
             
-    except Exception as e:  # ← 4 רווחים
-        st.error("שגיאה בשליחת הודעה")
-        return False  # ← 8 רווחים
-            
-    except Exception as e:  # תפיסת שגיאות לא צפויות
+    except Exception as e:
         print(f"❌ שגיאה בשליחת הודעה: {e}")
         st.error("שגיאה בשליחת הודעה - נסה שוב")
         return False
