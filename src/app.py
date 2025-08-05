@@ -322,7 +322,9 @@ def show_download_guide():
                     </div>
                     
                     <div style="margin-bottom: 12px;">
-                        <strong>2. התקינו את התוסף Joni</strong>
+                        <strong>2. התקינו את התוסף 
+                            <a href="https://joni.pyrogss.com/" target="_blank" rel="noopener noreferrer">Joni</a>
+                        </strong>
                     </div>
                     
                     <div style="margin-bottom: 12px;">
