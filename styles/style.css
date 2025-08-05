@@ -367,3 +367,21 @@ input[placeholder="שם/מספר"] {
   transform-origin: top left;
 }
 
+/* מוריד לגמרי את המרווח/פדינג העליון של הבלוק הראשי */
+.main .block-container {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+
+/* הסרת הרקע הלבן של המיכל שמקיף את הכפתורים */
+div[data-testid="stRadio"] > div[role="radiogroup"] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+/* ולעיתים צריך גם: */
+section[data-testid="stForm"] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
