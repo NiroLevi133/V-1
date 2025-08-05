@@ -53,7 +53,6 @@ def redirect_to_mobile():
         if (currentUrl.includes('app.py')) {
             newUrl = currentUrl.replace('app.py', 'styles/mobile_app.py');
         } else {
-            // אם זה URL בסיסי, הוסף את הנתיב
             const baseUrl = currentUrl.split('?')[0];
             newUrl = baseUrl + (baseUrl.endsWith('/') ? '' : '/') + 'styles/mobile_app.py';
         }
@@ -62,7 +61,7 @@ def redirect_to_mobile():
     </script>
     """, unsafe_allow_html=True)
     
-    st.info("💡 אם לא הועברת אוטומטית, גש ל: `styles/mobile_app.py`")
+    st.info("💡 אם לא הועברת אוטומטית, גש ל: styles/mobile_app.py")
     
     # הוספת קישור ידני
     st.markdown("""
@@ -80,21 +79,20 @@ def redirect_to_mobile():
 
 class AppConfig:
     def __init__(self):
-            self.green_id = None
-            self.green_token = None
-            self._load_credentials()
+        self.green_id = None
+        self.green_token = None
+        self._load_credentials()
         
-    def _load_credentials(self):  # ניסיון לטעון מקובץ .env (למקומי)
+    def _load_credentials(self):
         try:
             from dotenv import load_dotenv
-            load_dotenv()  # טוען את קובץ ה-.env
+            load_dotenv()
             print("✅ קובץ .env נטען")
         except ImportError:
             print("⚠️ python-dotenv לא מותקן")
         except Exception as e:
             print(f"⚠️ בעיה בטעינת .env: {e}")
         
-        # קריאת משתני הסביבה (עובד גם אחרי load_dotenv)
         self.green_id = os.getenv("GREEN_API_ID")
         self.green_token = os.getenv("GREEN_API_TOKEN")
         
@@ -104,18 +102,15 @@ class AppConfig:
             print(f"🔍 TOKEN: {self.green_token[:10]}...")
         else:
             print("❌ לא נמצאו נתוני GREEN-API")
-            print("🔍 משתנים זמינים:")
-            green_vars = [k for k in os.environ.keys() if 'GREEN' in k.upper()]
-            print(f"   {green_vars}")
         
     def is_valid(self):
-            if not self.green_id or not self.green_token:
-                return False
-            if not self.green_id.isdigit() or len(self.green_id) < 10:
-                return False
-            if len(self.green_token) < 20:
-                return False
-            return True
+        if not self.green_id or not self.green_token:
+            return False
+        if not self.green_id.isdigit() or len(self.green_id) < 10:
+            return False
+        if len(self.green_token) < 20:
+            return False
+        return True
 
 config = AppConfig()
 
@@ -129,17 +124,12 @@ if detect_mobile():
 
 def load_main_css_fixed():
     """טוען את ה-CSS הראשי עם תיקונים"""
-    import os
-    
-    # CSS בסיסי לוודא שההודעות מוצגות כראוי
     basic_css = """
-    /* וידוא שכל ה-HTML מעובד כראוי */
     .stMarkdown, .stMarkdown * {
         color: inherit !important;
         font-family: inherit !important;
     }
     
-    /* תיקון תצוגת הודעות */
     .stMarkdown div {
         display: block !important;
     }
@@ -147,16 +137,10 @@ def load_main_css_fixed():
     .stMarkdown strong {
         font-weight: bold !important;
     }
-    
-    /* הסתרת תגיות HTML שלא אמורות להיות גלויות */
-    .stMarkdown .stMarkdown {
-        display: none !important;
-    }
     """
     
     st.markdown(f"<style>{basic_css}</style>", unsafe_allow_html=True)
     
-    # רשימת נתיבים אפשריים
     possible_paths = [
         "../styles/style.css",      
         "styles/style.css",         
@@ -178,35 +162,19 @@ def load_main_css_fixed():
     print("⚠️ לא נמצא קובץ CSS - ממשיך עם CSS בסיסי")
 
 def load_radio_css():
-    """טוען CSS מעוצב לרדיו כפתורים קטנים ופשוטים ללא מסגרות"""
+    """טוען CSS מעוצב לרדיו כפתורים"""
     radio_css = """
-    /* ========================================
-       עיצוב Radio Buttons פשוט וקטן
-       ======================================== */
-    
-    /* מיכל הרדיו הראשי - הסרת המסגרת והקטנה */
     div[data-testid="stRadio"] {
         background: transparent !important;
         border: none !important;
-        border-radius: 0 !important;
         padding: 10px 0 !important;
-        box-shadow: none !important;
         margin: 10px 0 !important;
     }
     
-    /* הסתרת הכותרת */
     div[data-testid="stRadio"] > label {
         display: none !important;
     }
     
-    /* מיכל האופציות - קטן יותר */
-    div[data-testid="stRadio"] > div {
-        display: flex;
-        flex-direction: column;
-        gap: 4px !important;
-    }
-    
-    /* עיצוב כל אופציה - קטנה ופשוטה */
     div[data-testid="stRadio"] label {
         display: flex !important;
         align-items: center !important;
@@ -214,40 +182,23 @@ def load_radio_css():
         border: 1px solid #e9ecef !important;
         border-radius: 6px !important;
         cursor: pointer !important;
-        transition: all 0.15s ease !important;
         background: #fafafa !important;
-        margin: 0 !important;
+        margin: 4px 0 !important;
         font-size: 13px !important;
-        font-weight: 500 !important;
         color: #495057 !important;
         min-height: 36px !important;
-        max-height: 36px !important;
     }
     
-    /* הוברר על אופציה */
     div[data-testid="stRadio"] label:hover {
         background: #f8f9fa !important;
         border-color: #4A90E2 !important;
-        transform: none !important;
-        box-shadow: 0 1px 3px rgba(74,144,226,0.1) !important;
     }
     
-    /* אופציה נבחרת */
     div[data-testid="stRadio"] label:has(input:checked) {
         background: #e3f2fd !important;
         border-color: #4A90E2 !important;
         color: #1976d2 !important;
         font-weight: 600 !important;
-        box-shadow: 0 1px 4px rgba(74,144,226,0.15) !important;
-    }
-    
-    /* עיצוב הרדיו button עצמו */
-    div[data-testid="stRadio"] input[type="radio"] {
-        width: 16px !important;
-        height: 16px !important;
-        margin-left: 8px !important;
-        margin-right: 0 !important;
-        accent-color: #4A90E2 !important;
     }
     """
     
@@ -260,26 +211,19 @@ def normalize_phone_basic(p: str) -> Optional[str]:
 
 def send_code(phone: str, code: str) -> bool:
     """פונקציה משופרת לשליחת קוד אימות"""
-    
     if not config.is_valid():
         st.error("🚫 שגיאה בהגדרות המערכת - נתוני GREEN-API חסרים")
         return False
     
     try:
-        # ניקוי המספר מכל מה שלא ספרות
         clean_phone = "".join(filter(str.isdigit, phone))
-        print(f"🔍 מספר מקורי: {phone}")
-        print(f"🔍 מספר נקי: {clean_phone}")
         
-        # עיצוב לפורמט WhatsApp
         if clean_phone.startswith("0"):
             chat = "972" + clean_phone[1:] + "@c.us"
         elif clean_phone.startswith("972"):
             chat = clean_phone + "@c.us"
         else:
             chat = "972" + clean_phone + "@c.us"
-        
-        print(f"🔍 WhatsApp format: {chat}")
         
         url = f"https://api.green-api.com/waInstance{config.green_id}/sendMessage/{config.green_token}"
         
@@ -288,24 +232,15 @@ def send_code(phone: str, code: str) -> bool:
             "message": f"קוד האימות שלך: {code}"
         }
         
-        print(f"🔍 שולח ל-URL: {url}")
-        print(f"🔍 Payload: {payload}")
-        
         response = requests.post(url, json=payload, timeout=10)
         
-        print(f"🔍 Response Status: {response.status_code}")
-        print(f"🔍 Response Body: {response.text}")
-        
         if response.status_code == 200:
-            print("✅ הודעת WhatsApp נשלחה בהצלחה")
             return True
         else:
-            print(f"❌ שגיאה מ-GREEN-API: {response.status_code}")
             st.error(f"שגיאה בשליחת הודעה: {response.status_code}")
             return False
             
     except Exception as e:
-        print(f"❌ שגיאה בשליחת הודעה: {e}")
         st.error("שגיאה בשליחת הודעה - נסה שוב")
         return False
 
@@ -327,7 +262,6 @@ def find_up(start_path, *path_parts):
 def show_download_guide():
     """מציג מדריך הורדת אנשי קשר כחלונית בולטת"""
     if st.session_state.get("show_guide", False):
-        # יצירת חלונית בולטת עם CSS
         st.markdown("""
         <div style="
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -337,24 +271,15 @@ def show_download_guide():
             margin: 20px 0;
             box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
             border: 3px solid #4A90E2;
-            animation: slideIn 0.3s ease-out;
         ">
             <div style="text-align: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; font-size: 28px; font-weight: 700; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                <h2 style="margin: 0; font-size: 28px; font-weight: 700;">
                     📖 מדריך הורדת אנשי קשר מ-WhatsApp
                 </h2>
             </div>
         </div>
-        
-        <style>
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        </style>
         """, unsafe_allow_html=True)
         
-        # תוכן המדריך בקונטיינר לבן
         with st.container():
             st.markdown("""
             <div style="
@@ -367,7 +292,6 @@ def show_download_guide():
             ">
             """, unsafe_allow_html=True)
             
-            # תוכן במקביל
             col_text, col_image = st.columns([1.2, 1])
             
             with col_text:
@@ -403,7 +327,6 @@ def show_download_guide():
             
             st.markdown("</div>", unsafe_allow_html=True)
         
-        # כפתור סגירה בולט
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
@@ -413,7 +336,6 @@ def show_download_guide():
 
 def load_guide_css():
     """CSS מיוחד למדריך ואתחול משתנים"""
-    # אתחול משתני session_state
     if "upload_confirmed" not in st.session_state:
         st.session_state.upload_confirmed = False
 
@@ -424,7 +346,6 @@ def load_guide_css():
         st.session_state.idx = 0
         
     guide_css = """
-    /* עיצוב הקישור לג'וני */
     .stMarkdown a {
         color: #4A90E2 !important;
         text-decoration: none !important;
@@ -446,7 +367,6 @@ def load_guide_css():
 def load_modal_css():
     """CSS לעיצוב המדריך הבולט"""
     modal_css = """
-    /* עיצוב כפתור הסגירה */
     button[data-testid="baseButton-primary"] {
         background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%) !important;
         border: none !important;
@@ -470,29 +390,23 @@ def load_modal_css():
 def load_login_css():
     """טוען CSS למסך הכניסה"""
     login_css = """
-    /* הסתרת header של streamlit */
     .stAppHeader, .stAppToolbar, header[data-testid="stHeader"], .stDeployButton {display:none!important;}
     
-    /* רקע כחול - גם למסך קוד אימות */
     .stApp {
       background: linear-gradient(135deg,#E8EEFF 0%,#DBE6FF 100%)!important;
       min-height: 100vh!important;
     }
     
-    /* מחיקת קווים אפורים והכנסה למסגרת */
     .main .block-container {
       padding: 2rem!important;
       max-width: 600px!important;
       margin: 0 auto!important;
-      border: none!important;
-      box-shadow: none!important;
       background: white!important;
       border-radius: 20px!important;
       box-shadow: 0 10px 30px rgba(0,0,0,0.1)!important;
       margin-top: 3rem!important;
     }
     
-    /* אייקון עגול */
     .auth-icon {
       width: 70px!important;
       height: 70px!important;
@@ -506,7 +420,6 @@ def load_login_css():
       color: #4A90E2!important;
     }
     
-    /* כותרות */
     .auth-title {
       font-size: 28px!important;
       font-weight: 800!important;
@@ -529,7 +442,6 @@ def load_login_css():
       text-align: center!important;
     }
     
-    /* שדה טקסט */
     .stTextInput > div > div > input {
       text-align: center!important;
       font-size: 16px!important;
@@ -549,22 +461,13 @@ def load_login_css():
       justify-content: center!important;
       border: none!important;
       background: transparent!important;
-      box-shadow: none!important;
     }
     
     .stTextInput > div > div {
       border: none!important;
       background: transparent!important;
-      box-shadow: none!important;
-      outline: none!important;
       max-width: 350px!important;
       width: 100%!important;
-    }
-    
-    .stTextInput {
-      border: none!important;
-      background: transparent!important;
-      box-shadow: none!important;
     }
     
     .stTextInput > div > div > input:focus {
@@ -573,7 +476,6 @@ def load_login_css():
       outline: none!important;
     }
     
-    /* כפתור */
     .stButton > button {
       width: 100%!important;
       max-width: 350px!important;
@@ -601,7 +503,6 @@ def load_login_css():
 def load_file_uploader_css():
     """CSS מותאם לתיבות העלאת קבצים"""
     file_css = """
-    /* עיצוב תיבות העלאת קבצים */
     div[data-testid="stFileUploader"] {
         margin: 15px 0 !important;
         padding: 0 !important;
@@ -615,7 +516,6 @@ def load_file_uploader_css():
         text-align: center !important;
         transition: all 0.3s ease !important;
         margin: 0 !important;
-        height: auto !important;
         min-height: 80px !important;
     }
     
@@ -636,12 +536,10 @@ def auth_flow() -> bool:
     load_login_css()
     state = st.session_state.setdefault("auth_state", "phone")
 
-    # כותרות ללא wrapper - עכשיו הכל בתוך המסגרת הלבנה
     icon = "💬" if state == "phone" else "🔐"
     subtitle = "התחבר באמצעות מספר הטלפון שלך" if state == "phone" else "הכנס את הקוד שנשלח אליך"
     label = "מספר טלפון" if state == "phone" else "קוד אימות"
 
-    # אייקון עגול
     st.markdown(f'<div class="auth-icon">{icon}</div>', unsafe_allow_html=True)
     st.markdown('<div class="auth-title">מערכת שילוב רשימות</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="auth-subtitle">{subtitle}</div>', unsafe_allow_html=True)
@@ -684,7 +582,6 @@ def auth_flow() -> bool:
                 st.session_state.auth_attempts = att
                 if att >= MAX_AUTH_ATTEMPTS:
                     st.error("נחרגת ממספר הניסיונות המותר")
-                    # איפוס חזרה לשלב הטלפון
                     st.session_state.auth_state = "phone"
                     force_rerun()
                 else:
@@ -696,22 +593,18 @@ def create_radio_options(candidates: pd.DataFrame) -> list:
     """יוצר רשימת אופציות לרדיו כפתורים עם פורמט מיוחד"""
     options = ["❌ ללא התאמה"]
     
-    # הוספת מועמדים
     for _, candidate in candidates.iterrows():
         name = candidate[NAME_COL]
         phone = format_phone(candidate[PHONE_COL])
         score = int(candidate["score"])
         
-        # פורמט בסיסי
         option_text = f"{name} | {phone}"
         
-        # הוספת title attribute להתאמה מושלמת
         if score == 100:
             options.append(f"🎯 {option_text}")
         else:
             options.append(option_text)
     
-    # הוספת אופציות מיוחדות
     options.extend(["➕ הוסף ידני", "🔍 חפש אנשי קשר"])
     
     return options
@@ -723,13 +616,12 @@ def get_auto_select_index(candidates: pd.DataFrame, options: list) -> int:
     
     best_score = candidates.iloc[0]["score"]
     if best_score >= AUTO_SELECT_TH:
-        # מוצא את המיקום של ההתאמה הטובה ביותר ברשימה
         best_name = candidates.iloc[0][NAME_COL]
         for i, option in enumerate(options):
             if best_name in option and not option.startswith(("❌", "➕", "🔍")):
                 return i
     
-    return 0  # ברירת מחדל - ללא התאמה
+    return 0
 
 def render_guest_profile(cur):
     """מציג פרופיל מוזמן מעוצב ויפה"""
@@ -765,34 +657,26 @@ def render_guest_profile(cur):
     """, unsafe_allow_html=True)
 
 def render_match_selection(cur, contacts_df: pd.DataFrame) -> str:
-    # חישוב התאמות
     matches = contacts_df.copy()
     matches["score"] = matches["norm_name"].map(lambda c: full_score(cur.norm_name, c))
 
-    # בחר מועמדים על פי התנאים החדשים
     best_score = matches["score"].max() if not matches.empty else 0
 
     if best_score >= 100:
-        # אם יש מישהו עם התאמה מושלמת → רק מעל 90% ועד 3 מועמדים
         candidates = matches[matches["score"] >= 90]\
                         .sort_values(["score", NAME_COL], ascending=[False, True])\
                         .head(3)
     else:
-        # אחרת → התאמות מעל 70% ועד 5 מועמדים
         candidates = matches[matches["score"] >= 70]\
                         .sort_values(["score", NAME_COL], ascending=[False, True])\
                         .head(5)
 
-    # יצירת אופציות לרדיו
     options = create_radio_options(candidates)
     
-    # טעינת CSS לרדיו
     load_radio_css()
     
-    # בחירה אוטומטית
     auto_index = get_auto_select_index(candidates, options)
     
-    # הצגת הרדיו כפתורים
     choice = st.radio(
         "בחר איש קשר מתאים:",
         options,
@@ -826,7 +710,6 @@ def handle_contact_search(contacts_df: pd.DataFrame) -> str:
     )
     
     if len(query) >= 2:
-        # ביצוע החיפוש
         search_results = contacts_df[
             contacts_df.norm_name.str.contains(normalize(query), na=False) |
             contacts_df[PHONE_COL].str.contains(query, na=False)
@@ -859,7 +742,6 @@ def extract_phone_from_choice(choice: str) -> str:
     elif choice.startswith(("➕", "🔍")):
         return ""
     else:
-        # הסרת אמוג'י והחלצת המספר
         clean_choice = choice.replace("🎯 ", "")
         return clean_choice.split("|")[-1].strip()
 
@@ -885,7 +767,6 @@ if not st.session_state.upload_confirmed:
     with st.sidebar:
         st.markdown("## 📂 העלאת קבצים")
         
-        # כותרת קובץ אנשי קשר עם כפתור מדריך
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("### 👥 קובץ אנשי קשר")
@@ -901,7 +782,6 @@ if not st.session_state.upload_confirmed:
             label_visibility="collapsed"
         )
         
-        # כותרת קובץ מוזמנים
         st.markdown("### 🎉 קובץ מוזמנים")
         guests_file = st.file_uploader(
             "קובץ מוזמנים", 
@@ -918,7 +798,6 @@ if not st.session_state.upload_confirmed:
                     st.session_state.guests, st.session_state.contacts
                 )
             st.session_state.upload_confirmed = True
-            # סגירת המדריך אוטומטית כשמאשרים קבצים
             st.session_state.show_guide = False
             force_rerun()
 
@@ -929,25 +808,21 @@ if not st.session_state.upload_confirmed:
 with st.sidebar:
     st.checkbox("רק חסרי מספר", key="filter_no", on_change=lambda: st.session_state.update(idx=0))
 
-    # הכנת DataFrame מפוטר
     filtered_df = st.session_state.guests.copy()
     if st.session_state.get("filter_no"):
         filtered_df = filtered_df[filtered_df[PHONE_COL].str.strip() == ""]
 
-    # פילטרים נוספים
     all_sides   = st.session_state.guests[SIDE_COL].dropna().unique().tolist()
     all_groups  = st.session_state.guests[GROUP_COL].dropna().unique().tolist()
 
     st.multiselect("סנן לפי צד", options=all_sides, key="filter_sides")
     st.multiselect("סנן לפי קבוצה", options=all_groups, key="filter_groups")
 
-    # החלת פילטרים
     if st.session_state.get("filter_sides"):
         filtered_df = filtered_df[filtered_df[SIDE_COL].isin(st.session_state.filter_sides)]
     if st.session_state.get("filter_groups"):
         filtered_df = filtered_df[filtered_df[GROUP_COL].isin(st.session_state.filter_groups)]
 
-    # התקדמות
     filtered_total = len(filtered_df)
     complete_idx   = st.session_state.get("idx", 0)
     complete_idx   = min(complete_idx, filtered_total)
@@ -955,7 +830,6 @@ with st.sidebar:
     st.markdown(f"**{complete_idx}/{filtered_total} הושלמו**")
     st.progress(complete_idx / filtered_total if filtered_total else 0)
 
-    # הורדת קובץ
     st.download_button(
         "💾 הורד Excel",
         data=to_buf(filtered_df),
