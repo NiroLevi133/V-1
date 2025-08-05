@@ -260,77 +260,83 @@ def find_up(start_path, *path_parts):
     return None
 
 def show_download_guide():
-    """מציג מדריך הורדת אנשי קשר כחלונית בולטת"""
+    """מציג מדריך הורדת אנשי קשר כחלונית בולטת וקטנה"""
     if st.session_state.get("show_guide", False):
+        # כותרת קטנה יותר
         st.markdown("""
         <div style="
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 20px;
-            border-radius: 15px;
-            margin: 20px 0;
-            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
-            border: 3px solid #4A90E2;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 15px 0;
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+            text-align: center;
         ">
-            <div style="text-align: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; font-size: 28px; font-weight: 700;">
-                    📖 מדריך הורדת אנשי קשר מ-WhatsApp
-                </h2>
-            </div>
+            <h3 style="margin: 0; font-size: 20px; font-weight: 600;">
+                📖 מדריך הורדת אנשי קשר מ-WhatsApp
+            </h3>
         </div>
         """, unsafe_allow_html=True)
         
-        with st.container():
-            st.markdown("""
-            <div style="
-                background: white;
-                padding: 30px;
-                border-radius: 15px;
-                box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-                border: 1px solid #e3f2fd;
-                margin-top: -10px;
-            ">
-            """, unsafe_allow_html=True)
-            
-            col_text, col_image = st.columns([1.2, 1])
-            
-            with col_text:
-                st.markdown("### 📱 איך להוריד את רשימת אנשי הקשר?")
-                st.markdown("#### שלבי ההורדה:")
-                
-                st.markdown("**שלב 1:** פתח את הדפדפן **במחשב** (לא בטלפון)")
-                
-                st.markdown(
-                    "**שלב 2:** התקן את התוסף **[ג'וני](https://chromewebstore.google.com/detail/joni/aakppiadmnaeffmjijolmgmkcfhpglbh)** "
-                    "בדפדפן Chrome"
-                )
-                
-                st.markdown("**שלב 3:** היכנס ל-**WhatsApp Web** באותו דפדפן")
-                
-                st.markdown("**שלב 4:** לחץ על הסמל **J** (של ג'וני) בסרגל הכלים")
-                
-                st.markdown("**שלב 5:** בחר **אנשי קשר** ➜ **שמירה לקובץ Excel**")
-                
-                st.markdown("**שלב 6:** הקובץ יורד אוטומטית לתיקיית ההורדות")
-                
-                st.info("💡 **טיפים חשובים:**\n\n"
-                       "• וודא שאתה מחובר ל-WhatsApp Web\n\n"
-                       "• התוסף עובד רק בדפדפן Chrome\n\n"
-                       "• הקובץ נשמר בפורמט Excel מוכן לשימוש")
-            
-            with col_image:
-                img_path = find_up(Path(__file__).resolve().parent, "assets", "Joni.png")
-                if img_path and img_path.exists():
-                    st.image(str(img_path), caption="כך נראה התוסף ג'וני ב-WhatsApp Web", use_container_width=True)
-                else:
-                    st.info("🖼️ תמונת הדרכה תוצג כאן")
-            
-            st.markdown("</div>", unsafe_allow_html=True)
+        # תוכן מקוצר במקביל
+        col_text, col_image = st.columns([1.3, 1])
         
-        st.markdown("---")
+        with col_text:
+            st.markdown("#### 📋 שלבי ההורדה:")
+            
+            # שלבים קצרים יותר
+            st.markdown("**1.** פתח דפדפן במחשב")
+            st.markdown("**2.** התקן תוסף **[ג'וני](https://chromewebstore.google.com/detail/joni/aakppiadmnaeffmjijolmgmkcfhpglbh)** ב-Chrome")
+            st.markdown("**3.** היכנס ל-WhatsApp Web")
+            st.markdown("**4.** לחץ על סמל **J** בסרגל הכלים")
+            st.markdown("**5.** בחר **אנשי קשר** → **שמירה לקובץ Excel**")
+            st.markdown("**6.** הקובץ יורד אוטומטית")
+            
+            # טיפים קצרים
+            st.info("💡 **חשוב:** התוסף עובד רק ב-Chrome במחשב")
+        
+        with col_image:
+            # נתיבים מרובים לחיפוש התמונה
+            possible_image_paths = [
+                "assets/Joni.png",
+                "../assets/Joni.png", 
+                "./assets/Joni.png",
+                "/app/assets/Joni.png",
+                "styles/assets/Joni.png",
+                "../styles/assets/Joni.png"
+            ]
+            
+            image_found = False
+            for img_path in possible_image_paths:
+                try:
+                    if os.path.exists(img_path):
+                        st.image(img_path, caption="התוסף ג'וני", use_container_width=True)
+                        image_found = True
+                        break
+                except:
+                    continue
+            
+            if not image_found:
+                # תמונה דמה במקום הטקסט
+                st.markdown("""
+                <div style="
+                    background: #f0f4ff;
+                    border: 2px dashed #4A90E2;
+                    border-radius: 8px;
+                    padding: 30px;
+                    text-align: center;
+                    color: #4A90E2;
+                    font-size: 14px;
+                ">
+                    🖼️<br>תמונת המדריך<br>תוצג כאן
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # כפתור סגירה קטן
         col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
-            if st.button("❌ סגור מדריך", key="close_guide", use_container_width=True, type="primary"):
+            if st.button("✅ סגור", key="close_guide", use_container_width=True, type="primary"):
                 st.session_state.show_guide = False
                 st.rerun()
 
@@ -386,7 +392,8 @@ def load_modal_css():
     """
     
     st.markdown(f"<style>{modal_css}</style>", unsafe_allow_html=True)
-    
+
+       
 def load_login_css():
     """טוען CSS למסך הכניסה"""
     login_css = """
@@ -624,32 +631,31 @@ def get_auto_select_index(candidates: pd.DataFrame, options: list) -> int:
     return 0
 
 def render_guest_profile(cur):
-    """מציג פרופיל מוזמן מעוצב ויפה"""
+    """מציג פרופיל מוזמן מעוצב וקומפקטי"""
     st.markdown(f"""
     <div style="
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 16px;
-        padding: 24px;
-        margin: 20px 0;
-        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
-        border: 1px solid rgba(255,255,255,0.2);
+        border-radius: 12px;
+        padding: 16px;
+        margin: 12px 0;
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.25);
         text-align: center;
         color: white;
     ">
-        <div style="font-size: 28px; font-weight: 700; margin-bottom: 16px; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+        <div style="font-size: 22px; font-weight: 700; margin-bottom: 12px;">
             🎯 {cur[NAME_COL]}
         </div>
-        <div style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; font-size: 16px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 20px;">🧭</span>
+        <div style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; font-size: 14px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 16px;">🧭</span>
                 <strong>צד:</strong> {cur[SIDE_COL]}
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 20px;">🧩</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 16px;">🧩</span>
                 <strong>קבוצה:</strong> {cur[GROUP_COL]}
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 20px;">👥</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 16px;">👥</span>
                 <strong>כמות:</strong> {cur[COUNT_COL]}
             </div>
         </div>
