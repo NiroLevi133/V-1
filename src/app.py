@@ -6,7 +6,8 @@ import os
 import pandas as pd
 import streamlit as st
 import requests
-
+import subprocess
+import sys
 from logic import (
     NAME_COL, PHONE_COL, COUNT_COL, SIDE_COL, GROUP_COL,
     AUTO_SELECT_TH, load_excel, to_buf,
@@ -17,6 +18,65 @@ PAGE_TITLE = " מיזוג טלפונים 💎"
 CODE_TTL_SECONDS  = 300
 MAX_AUTH_ATTEMPTS = 5
 PHONE_PATTERN     = re.compile(r"^0\d{9}$")
+
+def detect_mobile():
+    """זיהוי אם המשתמש במובייל"""
+    try:
+        user_agent = st.context.headers.get("user-agent", "").lower()
+        mobile_keywords = ["mobile", "android", "iphone", "ipad", "ipod", "blackberry", "opera mini"]
+        return any(keyword in user_agent for keyword in mobile_keywords)
+    except:
+        return False
+
+def redirect_to_mobile():
+    """הפעלת האפליקציה למובייל"""
+    st.markdown("""
+    <div style="
+        text-align: center;
+        padding: 50px 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 20px;
+        margin: 20px 0;
+    ">
+        <h2>📱 מעביר לגרסת מובייל...</h2>
+        <p>האפליקציה מותאמת למובייל נטענת</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # הפניה לתיקיית styles
+    st.markdown("""
+    <script>
+    setTimeout(function() {
+        const currentUrl = window.location.href;
+        let newUrl;
+        if (currentUrl.includes('app.py')) {
+            newUrl = currentUrl.replace('app.py', 'styles/mobile_app.py');
+        } else {
+            // אם זה URL בסיסי, הוסף את הנתיב
+            const baseUrl = currentUrl.split('?')[0];
+            newUrl = baseUrl + (baseUrl.endsWith('/') ? '' : '/') + 'styles/mobile_app.py';
+        }
+        window.location.href = newUrl;
+    }, 2000);
+    </script>
+    """, unsafe_allow_html=True)
+    
+    st.info("💡 אם לא הועברת אוטומטית, גש ל: `styles/mobile_app.py`")
+    
+    # הוספת קישור ידני
+    st.markdown("""
+    <div style="text-align: center; margin-top: 20px;">
+        <a href="./styles/mobile_app.py" style="
+            background: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+        ">🔗 לחץ כאן לגרסת מובייל</a>
+    </div>
+    """, unsafe_allow_html=True)
 
 class AppConfig:
     def __init__(self):
@@ -58,13 +118,16 @@ class AppConfig:
             return True
 
 config = AppConfig()
-    
-
 
 st.set_page_config(page_title=PAGE_TITLE, layout="wide")
 print("🔄 TEST VERSION 1.0 - 05/08/2025")
 
-ef load_main_css_fixed():
+# זיהוי מובייל והפניה
+if detect_mobile():
+    redirect_to_mobile()
+    st.stop()
+
+def load_main_css_fixed():
     """טוען את ה-CSS הראשי עם תיקונים"""
     import os
     
@@ -178,77 +241,13 @@ def load_radio_css():
         box-shadow: 0 1px 4px rgba(74,144,226,0.15) !important;
     }
     
-    /* התאמה מושלמת - 100% - הדגשה בירוק קטנה */
-    div[data-testid="stRadio"] label[title*="התאמה מושלמת"] {
-        background: #f1f8e9 !important;
-        border: 1px solid #4caf50 !important;
-        color: #2e7d32 !important;
-        font-weight: 600 !important;
-        position: relative !important;
-    }
-    
-    div[data-testid="stRadio"] label[title*="התאמה מושלמת"]:hover {
-        background: #e8f5e8 !important;
-        border-color: #388e3c !important;
-        box-shadow: 0 1px 4px rgba(76,175,80,0.2) !important;
-    }
-    
-    div[data-testid="stRadio"] label[title*="התאמה מושלמת"]:has(input:checked) {
-        background: #dcedc8 !important;
-        border-color: #2e7d32 !important;
-        box-shadow: 0 1px 6px rgba(76,175,80,0.25) !important;
-    }
-    
-    /* סמן מושלמות קטן */
-    div[data-testid="stRadio"] label[title*="התאמה מושלמת"]::after {
-        content: "🎯";
-        position: absolute;
-        right: 8px;
-        font-size: 12px;
-    }
-    
-    /* עיצוב הרדיו button עצמו - קטן יותר */
+    /* עיצוב הרדיו button עצמו */
     div[data-testid="stRadio"] input[type="radio"] {
         width: 16px !important;
         height: 16px !important;
         margin-left: 8px !important;
         margin-right: 0 !important;
         accent-color: #4A90E2 !important;
-    }
-    
-    /* עיצוב מיוחד לאופציות מיוחדות - קטן יותר */
-    div[data-testid="stRadio"] label:has([value*="ללא התאמה"]) {
-        background: #fffbf0 !important;
-        border-color: #ffc107 !important;
-        color: #856404 !important;
-    }
-    
-    div[data-testid="stRadio"] label:has([value*="הוסף ידני"]) {
-        background: #f0f9ff !important;
-        border-color: #17a2b8 !important;
-        color: #0c5460 !important;
-    }
-    
-    div[data-testid="stRadio"] label:has([value*="חפש אנשי קשר"]) {
-        background: #f8f9fa !important;
-        border-color: #6c757d !important;
-        color: #495057 !important;
-    }
-    
-    /* Responsive למובייל */
-    @media (max-width: 768px) {
-        div[data-testid="stRadio"] label {
-            padding: 6px 10px !important;
-            font-size: 12px !important;
-            min-height: 32px !important;
-            max-height: 32px !important;
-        }
-        
-        div[data-testid="stRadio"] input[type="radio"] {
-            width: 14px !important;
-            height: 14px !important;
-            margin-left: 6px !important;
-        }
     }
     """
     
@@ -326,32 +325,148 @@ def find_up(start_path, *path_parts):
     return None
 
 def show_download_guide():
-    """מציג מדריך הורדת אנשי קשר בחלונית מתקפלת - גרסה מתוקנת"""
+    """מציג מדריך הורדת אנשי קשר כחלונית בולטת"""
     if st.session_state.get("show_guide", False):
-        with st.expander("📱 מדריך הורדת אנשי קשר", expanded=True):
-            col_text, col_img = st.columns([1, 2])
-            with col_text:
-                # שימוש ב-st.markdown רגיל במקום HTML מורכב
-                st.markdown("### 📱 איך להוריד אנשי קשר?")
-                
-                st.markdown("**1. התחברו מהמחשב** (לא מהטלפון)")
-                st.markdown("**2. התקינו את התוסף [Joni](https://joni.pyrogss.com/)**")
-                st.markdown("**3. פתחו WhatsApp Web**")
-                st.markdown("**4. לחצו על סמל J → אנשי קשר → שמירה לקובץ אקסל**")
-                
-                st.info("💡 **טיפ:** הקובץ יישמר אוטומטית")
+        # יצירת חלונית בולטת עם CSS
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+            border: 3px solid #4A90E2;
+            animation: slideIn 0.3s ease-out;
+        ">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-size: 28px; font-weight: 700; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                    📖 מדריך הורדת אנשי קשר מ-WhatsApp
+                </h2>
+            </div>
+        </div>
+        
+        <style>
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # תוכן המדריך בקונטיינר לבן
+        with st.container():
+            st.markdown("""
+            <div style="
+                background: white;
+                padding: 30px;
+                border-radius: 15px;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+                border: 1px solid #e3f2fd;
+                margin-top: -10px;
+            ">
+            """, unsafe_allow_html=True)
             
-            with col_img:
-                img = find_up(Path(__file__).resolve().parent, "assets", "Joni.png")
-                if img: 
-                    st.image(str(img), width=400)
-                else: 
+            # תוכן במקביל
+            col_text, col_image = st.columns([1.2, 1])
+            
+            with col_text:
+                st.markdown("### 📱 איך להוריד את רשימת אנשי הקשר?")
+                st.markdown("#### שלבי ההורדה:")
+                
+                st.markdown("**שלב 1:** פתח את הדפדפן **במחשב** (לא בטלפון)")
+                
+                st.markdown(
+                    "**שלב 2:** התקן את התוסף **[ג'וני](https://chromewebstore.google.com/detail/joni/aakppiadmnaeffmjijolmgmkcfhpglbh)** "
+                    "בדפדפן Chrome"
+                )
+                
+                st.markdown("**שלב 3:** היכנס ל-**WhatsApp Web** באותו דפדפן")
+                
+                st.markdown("**שלב 4:** לחץ על הסמל **J** (של ג'וני) בסרגל הכלים")
+                
+                st.markdown("**שלב 5:** בחר **אנשי קשר** ➜ **שמירה לקובץ Excel**")
+                
+                st.markdown("**שלב 6:** הקובץ יורד אוטומטית לתיקיית ההורדות")
+                
+                st.info("💡 **טיפים חשובים:**\n\n"
+                       "• וודא שאתה מחובר ל-WhatsApp Web\n\n"
+                       "• התוסף עובד רק בדפדפן Chrome\n\n"
+                       "• הקובץ נשמר בפורמט Excel מוכן לשימוש")
+            
+            with col_image:
+                img_path = find_up(Path(__file__).resolve().parent, "assets", "Joni.png")
+                if img_path and img_path.exists():
+                    st.image(str(img_path), caption="כך נראה התוסף ג'וני ב-WhatsApp Web", use_container_width=True)
+                else:
                     st.info("🖼️ תמונת הדרכה תוצג כאן")
             
-            if st.button("❌ סגור מדריך", key="close_guide"):
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # כפתור סגירה בולט
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("❌ סגור מדריך", key="close_guide", use_container_width=True, type="primary"):
                 st.session_state.show_guide = False
-                force_rerun()
+                st.rerun()
 
+def load_guide_css():
+    """CSS מיוחד למדריך ואתחול משתנים"""
+    # אתחול משתני session_state
+    if "upload_confirmed" not in st.session_state:
+        st.session_state.upload_confirmed = False
+
+    if "show_guide" not in st.session_state:
+        st.session_state.show_guide = False
+
+    if "idx" not in st.session_state:
+        st.session_state.idx = 0
+        
+    guide_css = """
+    /* עיצוב הקישור לג'וני */
+    .stMarkdown a {
+        color: #4A90E2 !important;
+        text-decoration: none !important;
+        font-weight: 600 !important;
+        border-bottom: 2px solid #4A90E2 !important;
+        padding-bottom: 1px !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    .stMarkdown a:hover {
+        color: #2980b9 !important;
+        border-bottom-color: #2980b9 !important;
+        transform: translateY(-1px) !important;
+    }
+    """
+    
+    st.markdown(f"<style>{guide_css}</style>", unsafe_allow_html=True)
+    
+def load_modal_css():
+    """CSS לעיצוב המדריך הבולט"""
+    modal_css = """
+    /* עיצוב כפתור הסגירה */
+    button[data-testid="baseButton-primary"] {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%) !important;
+        border: none !important;
+        border-radius: 10px !important;
+        padding: 12px 24px !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        color: white !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3) !important;
+    }
+    
+    button[data-testid="baseButton-primary"]:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4) !important;
+    }
+    """
+    
+    st.markdown(f"<style>{modal_css}</style>", unsafe_allow_html=True)
+    
 def load_login_css():
     """טוען CSS למסך הכניסה"""
     login_css = """
@@ -375,22 +490,6 @@ def load_login_css():
       border-radius: 20px!important;
       box-shadow: 0 10px 30px rgba(0,0,0,0.1)!important;
       margin-top: 3rem!important;
-    }
-    
-    /* הסתרת מספר תווים ושורת עזרה */
-    .stTextInput > label > div[data-testid="InputInstructions"] {
-      display: none!important;
-    }
-    .stTextInput > div > div > div[data-testid="InputInstructions"] {
-      display: none!important;
-    }
-    div[data-testid="InputInstructions"] {
-      display: none!important;
-    }
-    
-    /* רכוז הכל */
-    .stMarkdown, .stTextInput, .stButton {
-      text-align: center!important;
     }
     
     /* אייקון עגול */
@@ -430,7 +529,7 @@ def load_login_css():
       text-align: center!important;
     }
     
-    /* שדה טקסט - גודל רגיל */
+    /* שדה טקסט */
     .stTextInput > div > div > input {
       text-align: center!important;
       font-size: 16px!important;
@@ -443,12 +542,6 @@ def load_login_css():
       direction: ltr!important;
       background: #fafafa!important;
       font-family: monospace!important;
-    }
-    
-    /* מקלדת מספרים למובייל */
-    input[data-testid*="phone"], input[data-testid*="code"] {
-      inputmode: numeric !important;
-      pattern: [0-9]* !important;
     }
     
     .stTextInput > div {
@@ -480,7 +573,7 @@ def load_login_css():
       outline: none!important;
     }
     
-    /* כפתור - גודל רגיל */
+    /* כפתור */
     .stButton > button {
       width: 100%!important;
       max-width: 350px!important;
@@ -501,81 +594,19 @@ def load_login_css():
       transform: translateY(-1px)!important;
       box-shadow: 0 6px 18px rgba(94,131,216,.35)!important;
     }
-    
-    /* הסתרת קוביות לבנות וקווים */
-    .element-container[data-testid] {
-      background: transparent!important;
-      border: none!important;
-      box-shadow: none!important;
-    }
-    
-    /* הודעות הצלחה וכשלון - CSS חזק יותר */
-    .stAlert, .stSuccess, .stError, .stWarning, 
-    div[data-testid="stAlert"], div[data-testid="stSuccess"], 
-    div[data-testid="stError"], div[data-testid="stWarning"] {
-      max-width: 350px!important;
-      margin: 10px auto!important;
-      text-align: center!important;
-      display: flex!important;
-      justify-content: center!important;
-      width: 350px!important;
-    }
-    
-    .stAlert > div, .stSuccess > div, .stError > div, .stWarning > div,
-    div[data-testid="stAlert"] > div, div[data-testid="stSuccess"] > div,
-    div[data-testid="stError"] > div, div[data-testid="stWarning"] > div {
-      font-size: 14px!important;
-      padding: 8px 16px!important;
-      border-radius: 8px!important;
-      text-align: center!important;
-      max-width: 350px!important;
-      width: 100%!important;
-      margin: 0 auto!important;
-    }
-    
-    /* CSS ספציפי מאוד להודעת הצלחה */
-    .main .block-container .stSuccess {
-      max-width: 350px!important;
-      width: 350px!important;
-      margin: 10px auto!important;
-    }
-    
-    .main .block-container .stSuccess > div {
-      max-width: 350px!important;
-      width: 100%!important;
-      text-align: center!important;
-    }
     """
     
     st.markdown(f"<style>{login_css}</style>", unsafe_allow_html=True)
 
 def load_file_uploader_css():
-    """CSS מותאם לתיבות העלאת קבצים - נקיות ומסודרות"""
+    """CSS מותאם לתיבות העלאת קבצים"""
     file_css = """
-    /* ========================================
-       עיצוב תיבות העלאת קבצים - גרסה נקייה
-       ======================================== */
-    
-    /* איפוס כללי */
+    /* עיצוב תיבות העלאת קבצים */
     div[data-testid="stFileUploader"] {
         margin: 15px 0 !important;
         padding: 0 !important;
     }
     
-    /* הסתרת הlabel הראשי */
-    div[data-testid="stFileUploader"] > label {
-        display: none !important;
-    }
-    
-    /* איפוס האזור החיצוני */
-    div[data-testid="stFileUploader"] > div {
-        margin: 0 !important;
-        padding: 0 !important;
-        border: none !important;
-        background: transparent !important;
-    }
-    
-    /* עיצוב אזור הdrop zone */
     section[data-testid="stFileUploadDropzone"] {
         border: 2px dashed #dee2e6 !important;
         border-radius: 12px !important;
@@ -588,128 +619,10 @@ def load_file_uploader_css():
         min-height: 80px !important;
     }
     
-    /* הוברר על אזור הdrop */
     section[data-testid="stFileUploadDropzone"]:hover {
         border-color: #4A90E2 !important;
         background: #f8f9fa !important;
         box-shadow: 0 2px 8px rgba(74,144,226,0.15) !important;
-    }
-    
-    /* מיכל ההוראות */
-    div[data-testid="stFileDropzoneInstructions"] {
-        margin: 0 !important;
-        padding: 0 !important;
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        gap: 8px !important;
-    }
-    
-    div[data-testid="stFileDropzoneInstructions"] > div {
-        margin: 0 !important;
-        padding: 0 !important;
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: center !important;
-        gap: 4px !important;
-    }
-    
-    /* הטקסט המרכזי - החלפה */
-    div[data-testid="stFileDropzoneInstructions"] > div > span {
-        visibility: hidden !important;
-        position: absolute !important;
-    }
-    
-    div[data-testid="stFileDropzoneInstructions"] > div > span::before {
-        content: "📄 לחץ כאן או גרור קובץ Excel" !important;
-        visibility: visible !important;
-        position: relative !important;
-        color: #6c757d !important;
-        font-size: 13px !important;
-    }
-    
-    /* הטקסט התחתון - החלפה */
-    div[data-testid="stFileDropzoneInstructions"] > div > small {
-        visibility: hidden !important;
-        position: absolute !important;
-    }
-    
-    div[data-testid="stFileDropzoneInstructions"] > div > small::before {
-        content: "xlsx, xls, csv" !important;
-        visibility: visible !important;
-        position: relative !important;
-        color: #adb5bd !important;
-        font-size: 11px !important;
-    }
-    
-    /* הכפתור Browse files */
-    section[data-testid="stFileUploadDropzone"] button[data-testid="baseButton-secondary"] {
-        background: #f8f9fa !important;
-        border: 1px solid #ced4da !important;
-        border-radius: 6px !important;
-        padding: 6px 12px !important;
-        font-size: 11px !important;
-        color: transparent !important;
-        cursor: pointer !important;
-        transition: all 0.2s ease !important;
-        margin-top: 8px !important;
-        position: relative !important;
-        height: 28px !important;
-        min-height: 28px !important;
-    }
-    
-    /* הוברר על הכפתור */
-    section[data-testid="stFileUploadDropzone"] button[data-testid="baseButton-secondary"]:hover {
-        background: #e9ecef !important;
-        transform: translateY(-1px) !important;
-        border-color: #4A90E2 !important;
-    }
-    
-    /* הטקסט בכפתור */
-    section[data-testid="stFileUploadDropzone"] button[data-testid="baseButton-secondary"]::after {
-        content: "🗂️ עיון בקבצים" !important;
-        color: #495057 !important;
-        position: absolute !important;
-        top: 50% !important;
-        left: 50% !important;
-        transform: translate(-50%, -50%) !important;
-        font-size: 11px !important;
-        white-space: nowrap !important;
-    }
-    
-    /* תצוגת הקובץ שנבחר */
-    div[data-testid="stFileUploader"] span[title] {
-        background: #d1ecf1 !important;
-        border: 1px solid #bee5eb !important;
-        border-radius: 6px !important;
-        padding: 4px 8px !important;
-        font-size: 11px !important;
-        font-weight: 600 !important;
-        color: #0c5460 !important;
-        display: inline-block !important;
-        margin-top: 8px !important;
-        max-width: 95% !important;
-        word-break: break-all !important;
-    }
-    
-    /* עיצוב כפתור העזרה */
-    .help-button {
-        background: #f8f9fa !important;
-        border: 1px solid #dee2e6 !important;
-        border-radius: 8px !important;
-        padding: 8px 12px !important;
-        font-size: 12px !important;
-        color: #6c757d !important;
-        cursor: pointer !important;
-        transition: all 0.2s ease !important;
-        margin-top: 10px !important;
-        width: 100% !important;
-    }
-    
-    .help-button:hover {
-        background: #e9ecef !important;
-        border-color: #4A90E2 !important;
-        color: #4A90E2 !important;
     }
     """
     
@@ -738,13 +651,6 @@ def auth_flow() -> bool:
         phone = st.text_input("מספר טלפון", placeholder="05X-XXXXXXX",
                               max_chars=10, key="phone_input", label_visibility="hidden")
         
-        # הוספת מקלדת מספרים למובייל
-        st.markdown("""
-        <script>
-        document.querySelector('input[data-testid*="phone"]').inputMode = 'numeric';
-        document.querySelector('input[data-testid*="phone"]').pattern = '[0-9]*';
-        </script>
-        """, unsafe_allow_html=True)
         if st.button("שלח קוד אימות 💬"):
             p = normalize_phone_basic(phone)
             if not p:
@@ -758,25 +664,10 @@ def auth_flow() -> bool:
                     st.error("לא ניתן לשלוח קוד אימות - בדוק את החיבור")
                 else:
                     st.success("הקוד נשלח."); force_rerun()
-                
 
     else:  # state == "code"
         entry = st.text_input("קוד אימות", placeholder="הכנס קוד בן 4 ספרות", max_chars=4, label_visibility="hidden")
         
-        # הוספת מקלדת מספרים למובייל
-        st.markdown("""
-        <script>
-        setTimeout(function() {
-            var inputs = document.querySelectorAll('input');
-            inputs.forEach(function(input) {
-                if (input.placeholder && input.placeholder.includes('קוד')) {
-                    input.inputMode = 'numeric';
-                    input.pattern = '[0-9]*';
-                }
-            });
-        }, 100);
-        </script>
-        """, unsafe_allow_html=True)
         expired = (time.time() - st.session_state.code_ts) > CODE_TTL_SECONDS
         if expired: 
             st.warning("הקוד פג תוקף")
@@ -785,8 +676,7 @@ def auth_flow() -> bool:
                 st.error("הקוד פג תוקף")
             elif entry == st.session_state.auth_code:
                 st.session_state.auth_ok = True
-                # הודעת הצלחה קטנה וממורכזת
-                st.markdown('<div style="max-width: 350px; margin: 10px auto; padding: 8px 16px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 8px; text-align: center; font-size: 14px; color: #155724;">✅ התחברת בהצלחה!</div>', unsafe_allow_html=True)
+                st.success("✅ התחברת בהצלחה!")
                 time.sleep(1)
                 force_rerun()
             else:
@@ -875,7 +765,7 @@ def render_guest_profile(cur):
     """, unsafe_allow_html=True)
 
 def render_match_selection(cur, contacts_df: pd.DataFrame) -> str:
-    # … חישוב התאמות …
+    # חישוב התאמות
     matches = contacts_df.copy()
     matches["score"] = matches["norm_name"].map(lambda c: full_score(cur.norm_name, c))
 
@@ -892,7 +782,6 @@ def render_match_selection(cur, contacts_df: pd.DataFrame) -> str:
         candidates = matches[matches["score"] >= 70]\
                         .sort_values(["score", NAME_COL], ascending=[False, True])\
                         .head(5)
-
 
     # יצירת אופציות לרדיו
     options = create_radio_options(candidates)
@@ -976,6 +865,8 @@ def extract_phone_from_choice(choice: str) -> str:
 
 # טעינת CSS ראשי
 load_main_css_fixed()
+load_guide_css()
+load_modal_css()
 
 # בדיקת אימות
 if not auth_flow():
@@ -990,19 +881,16 @@ st.title(PAGE_TITLE)
 show_download_guide()
 
 # שלב העלאת קבצים
-if "upload_confirmed" not in st.session_state:
-    st.session_state.upload_confirmed = False
-
 if not st.session_state.upload_confirmed:
     with st.sidebar:
         st.markdown("## 📂 העלאת קבצים")
         
-        # כותרת קובץ אנשי קשר עם כפתור עזרה
+        # כותרת קובץ אנשי קשר עם כפתור מדריך
         col1, col2 = st.columns([3, 1])
         with col1:
             st.markdown("### 👥 קובץ אנשי קשר")
         with col2:
-            if st.button("❓ עזרה", key="help_contacts", help="איך להוריד קובץ אנשי קשר?"):
+            if st.button("📖 מדריך", key="help_contacts", help="איך להוריד קובץ אנשי קשר?"):
                 st.session_state.show_guide = True
                 force_rerun()
         
@@ -1030,6 +918,8 @@ if not st.session_state.upload_confirmed:
                     st.session_state.guests, st.session_state.contacts
                 )
             st.session_state.upload_confirmed = True
+            # סגירת המדריך אוטומטית כשמאשרים קבצים
+            st.session_state.show_guide = False
             force_rerun()
 
 if not st.session_state.upload_confirmed:
@@ -1075,8 +965,6 @@ with st.sidebar:
 
 # מיון והכנת נתונים לעבודה
 df = filtered_df.sort_values(["best_score", NAME_COL], ascending=[False, True])
-if "idx" not in st.session_state:
-    st.session_state.idx = 0
 
 # בדיקה אם סיימנו
 if st.session_state.idx >= len(df):
