@@ -64,16 +64,41 @@ config = AppConfig()
 st.set_page_config(page_title=PAGE_TITLE, layout="wide")
 print("🔄 TEST VERSION 1.0 - 05/08/2025")
 
-def load_main_css():
-    """טוען את ה-CSS הראשי של האפליקציה"""
+ef load_main_css_fixed():
+    """טוען את ה-CSS הראשי עם תיקונים"""
     import os
+    
+    # CSS בסיסי לוודא שההודעות מוצגות כראוי
+    basic_css = """
+    /* וידוא שכל ה-HTML מעובד כראוי */
+    .stMarkdown, .stMarkdown * {
+        color: inherit !important;
+        font-family: inherit !important;
+    }
+    
+    /* תיקון תצוגת הודעות */
+    .stMarkdown div {
+        display: block !important;
+    }
+    
+    .stMarkdown strong {
+        font-weight: bold !important;
+    }
+    
+    /* הסתרת תגיות HTML שלא אמורות להיות גלויות */
+    .stMarkdown .stMarkdown {
+        display: none !important;
+    }
+    """
+    
+    st.markdown(f"<style>{basic_css}</style>", unsafe_allow_html=True)
     
     # רשימת נתיבים אפשריים
     possible_paths = [
-        "../styles/style.css",      # נתיב מקורי (מקומי)
-        "styles/style.css",         # אם styles בתיקיה הנוכחית
-        "/app/styles/style.css",    # נתיב מלא ב-container
-        "./styles/style.css",       # נתיב יחסי אחר
+        "../styles/style.css",      
+        "styles/style.css",         
+        "/app/styles/style.css",    
+        "./styles/style.css",       
     ]
     
     for css_path in possible_paths:
@@ -87,7 +112,7 @@ def load_main_css():
             print(f"⚠️ לא ניתן לטעון CSS מ-{css_path}: {e}")
             continue
     
-    print("⚠️ לא נמצא קובץ CSS - ממשיך בלי עיצוב")
+    print("⚠️ לא נמצא קובץ CSS - ממשיך עם CSS בסיסי")
 
 def load_radio_css():
     """טוען CSS מעוצב לרדיו כפתורים קטנים ופשוטים ללא מסגרות"""
@@ -301,45 +326,20 @@ def find_up(start_path, *path_parts):
     return None
 
 def show_download_guide():
-    """מציג מדריך הורדת אנשי קשר בחלונית מתקפלת"""
+    """מציג מדריך הורדת אנשי קשר בחלונית מתקפלת - גרסה מתוקנת"""
     if st.session_state.get("show_guide", False):
         with st.expander("📱 מדריך הורדת אנשי קשר", expanded=True):
             col_text, col_img = st.columns([1, 2])
             with col_text:
-                st.markdown("""
-                <div style="
-                    background: #ffffff;
-                    border-radius: 16px;
-                    padding: 20px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-                    margin: 20px 0;
-                    border-left: 5px solid #4A90E2;
-                ">
-                    <h3 style="color: #4A90E2; margin-bottom: 16px;">📱 איך להוריד אנשי קשר?</h3>
-                    
-                    <div style="margin-bottom: 12px;">
-                        <strong>1. התחברו מהמחשב</strong> (לא מהטלפון)
-                    </div>
-                    
-                    <div style="margin-bottom: 12px;">
-                        <strong>2. התקינו את התוסף 
-                            <a href="https://joni.pyrogss.com/" target="_blank" rel="noopener noreferrer">Joni</a>
-                        </strong>
-                    </div>
-                    
-                    <div style="margin-bottom: 12px;">
-                        <strong>3. פתחו WhatsApp Web</strong>
-                    </div>
-                    
-                    <div style="margin-bottom: 12px;">
-                        <strong>4. לחצו על סמל J → אנשי קשר → שמירה לקובץ אקסל</strong>
-                    </div>
-                    
-                    <div style="background: #f0f8ff; padding: 12px; border-radius: 8px; margin-top: 16px;">
-                        <strong>💡 טיפ:</strong> הקובץ יישמר אוטומטית
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+                # שימוש ב-st.markdown רגיל במקום HTML מורכב
+                st.markdown("### 📱 איך להוריד אנשי קשר?")
+                
+                st.markdown("**1. התחברו מהמחשב** (לא מהטלפון)")
+                st.markdown("**2. התקינו את התוסף [Joni](https://joni.pyrogss.com/)**")
+                st.markdown("**3. פתחו WhatsApp Web**")
+                st.markdown("**4. לחצו על סמל J → אנשי קשר → שמירה לקובץ אקסל**")
+                
+                st.info("💡 **טיפ:** הקובץ יישמר אוטומטית")
             
             with col_img:
                 img = find_up(Path(__file__).resolve().parent, "assets", "Joni.png")
@@ -975,7 +975,7 @@ def extract_phone_from_choice(choice: str) -> str:
         return clean_choice.split("|")[-1].strip()
 
 # טעינת CSS ראשי
-load_main_css()
+load_main_css_fixed()
 
 # בדיקת אימות
 if not auth_flow():
