@@ -1,44 +1,26 @@
-/* === מסך התחברות – מינימלי וצבעוני === */
-
-body, .stApp {
-    background: #f9fafb !important;
-}
+/* === מסך ראשי – מינימלי RTL === */
 
 .main .block-container {
-    max-width: 340px;
-    margin: 50px auto;
-    padding: 20px;
+    padding: 10px;
+}
+
+.guest-profile {
     background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-}
-
-.auth-header {
-    text-align: center;
-    margin-bottom: 16px;
-}
-
-.auth-title {
-    font-size: 14px;
-    font-weight: 600;
-}
-
-.auth-subtitle {
+    border-radius: 8px;
+    padding: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
     font-size: 10px;
-    color: #666;
 }
 
-div[data-testid="stTextInput"] input {
-    width: 100%;
+.guest-profile h2 {
+    font-size: 12px !important;
+}
+
+/* רדיו קומפקטי */
+div[data-testid="stRadio"] label {
     font-size: 10px !important;
-    height: 30px !important;
-}
-
-.stButton > button {
-    width: 100%;
-    height: 30px;
-    font-size: 10px;
-    border-radius: 16px;
+    padding: 2px 6px !important;
+    border-radius: 8px !important;
 }
 /* === גודל אחיד קטן לכל הכפתורים והטקסט-בוקסים במערכת === */
 
@@ -81,4 +63,31 @@ input[type="submit"] {
         min-height: 24px !important;
         padding: 0 6px !important;
     }
+}
+/* טקסטבוקסים בכל הדפים */
+.stTextInput input,
+.stTextArea textarea,
+input[type="text"],
+input[type="password"],
+input[type="tel"],
+textarea {
+    font-size: 13px !important;
+    padding: 6px 8px !important;
+    height: 32px !important;
+    border-radius: 6px !important;
+}
+
+/* כפתורים בכל הדפים */
+.stButton > button,
+div[data-testid="stButton"] button {
+    font-size: 13px !important;
+    padding: 6px 12px !important;
+    height: 32px !important;
+    border-radius: 6px !important;
+}
+
+/* יישור RTL רק לאזור התוכן של המערכת (לא ללוגין) */
+.main, .block-container {
+    direction: rtl !important;
+    text-align: right !important;
 }
