@@ -1,82 +1,28 @@
-import time, secrets, re
+import time, secrets, re, os
 from datetime import datetime
 from typing import Optional, Tuple
-import base64
-import os
 import pandas as pd
 import streamlit as st
 import requests
-import subprocess
-import sys
+from pathlib import Path
+
 from logic import (
     NAME_COL, PHONE_COL, COUNT_COL, SIDE_COL, GROUP_COL,
     AUTO_SELECT_TH, load_excel, to_buf,
     format_phone, normalize, compute_best_scores, full_score,
 )
 
+# ===============================
+# קבועים ותצורה
+# ===============================
 PAGE_TITLE = " מיזוג טלפונים 💎"
-CODE_TTL_SECONDS  = 300
+CODE_TTL_SECONDS = 300
 MAX_AUTH_ATTEMPTS = 5
-PHONE_PATTERN     = re.compile(r"^0\d{9}$")
+PHONE_PATTERN = re.compile(r"^0\d{9}$")
 
-def detect_mobile():
-    """זיהוי אם המשתמש במובייל"""
-    try:
-        user_agent = st.context.headers.get("user-agent", "").lower()
-        mobile_keywords = ["mobile", "android", "iphone", "ipad", "ipod", "blackberry", "opera mini"]
-        return any(keyword in user_agent for keyword in mobile_keywords)
-    except:
-        return False
-
-def redirect_to_mobile():
-    """הפעלת האפליקציה למובייל"""
-    st.markdown("""
-    <div style="
-        text-align: center;
-        padding: 50px 20px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border-radius: 20px;
-        margin: 20px 0;
-    ">
-        <h2>📱 מעביר לגרסת מובייל...</h2>
-        <p>האפליקציה מותאמת למובייל נטענת</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # הפניה לתיקיית styles
-    st.markdown("""
-    <script>
-    setTimeout(function() {
-        const currentUrl = window.location.href;
-        let newUrl;
-        if (currentUrl.includes('app.py')) {
-            newUrl = currentUrl.replace('app.py', 'styles/mobile_app.py');
-        } else {
-            const baseUrl = currentUrl.split('?')[0];
-            newUrl = baseUrl + (baseUrl.endsWith('/') ? '' : '/') + 'styles/mobile_app.py';
-        }
-        window.location.href = newUrl;
-    }, 2000);
-    </script>
-    """, unsafe_allow_html=True)
-    
-    st.info("💡 אם לא הועברת אוטומטית, גש ל: styles/mobile_app.py")
-    
-    # הוספת קישור ידני
-    st.markdown("""
-    <div style="text-align: center; margin-top: 20px;">
-        <a href="./styles/mobile_app.py" style="
-            background: #28a745;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-        ">🔗 לחץ כאן לגרסת מובייל</a>
-    </div>
-    """, unsafe_allow_html=True)
-
+# ===============================
+# מחלקת תצורה
+# ===============================
 class AppConfig:
     def __init__(self):
         self.green_id = None
@@ -98,8 +44,6 @@ class AppConfig:
         
         if self.green_id and self.green_token:
             print("✅ נתוני GREEN-API נטענו בהצלחה")
-            print(f"🔍 ID: {self.green_id[:3]}...")
-            print(f"🔍 TOKEN: {self.green_token[:10]}...")
         else:
             print("❌ לא נמצאו נתוני GREEN-API")
         
@@ -112,105 +56,70 @@ class AppConfig:
             return False
         return True
 
-config = AppConfig()
+# ===============================
+# פונקציות CSS
+# ===============================
 
-st.set_page_config(page_title=PAGE_TITLE, layout="wide")
-print("🔄 TEST VERSION 1.0 - 05/08/2025")
+def load_css():
+    possible_paths = ["styles/", "../styles/", "./styles/", "/app/styles/", "src/../styles/"]
 
-# זיהוי מובייל והפניה
-if detect_mobile():
-    redirect_to_mobile()
-    st.stop()
+    if st.session_state.get("auth_ok", False):
+        css_files = ["components.css", "main.css", "mobile.css", "style.css"]  # ← הוסף כאן
+    else:
+        css_files = ["components.css", "login.css", "style.css"]               # ← וגם כאן
 
-def load_main_css_fixed():
-    """טוען את ה-CSS הראשי עם תיקונים"""
-    basic_css = """
-    .stMarkdown, .stMarkdown * {
-        color: inherit !important;
-        font-family: inherit !important;
-    }
-    
-    .stMarkdown div {
-        display: block !important;
-    }
-    
-    .stMarkdown strong {
-        font-weight: bold !important;
-    }
-    """
-    
-    st.markdown(f"<style>{basic_css}</style>", unsafe_allow_html=True)
-    
+    for css_file in css_files:
+        for base_path in possible_paths:
+            css_path = os.path.join(base_path, css_file)
+            try:
+                if os.path.exists(css_path):
+                    with open(css_path, encoding="utf-8") as f:
+                        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+                        break
+            except Exception:
+                continue
+
+def debug_css_paths():
+    """בדיקת נתיבים לקבצי CSS"""
     possible_paths = [
-        "../styles/style.css",      
-        "styles/style.css",         
-        "/app/styles/style.css",    
-        "./styles/style.css",       
+        "styles/",
+        "../styles/", 
+        "./styles/",
+        "/app/styles/",
+        "src/../styles/",
     ]
     
-    for css_path in possible_paths:
+    css_files = ["components.css", "login.css", "main.css", "mobile.css"]
+    
+    print("🔍 בדיקת נתיבי CSS:")
+    for base_path in possible_paths:
+        print(f"\n📁 בדיקת תיקיה: {base_path}")
         try:
-            if os.path.exists(css_path):
-                with open(css_path, encoding="utf-8") as f:
-                    st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-                    print(f"✅ CSS נטען בהצלחה מ: {css_path}")
-                    return
+            if os.path.exists(base_path):
+                files_in_dir = os.listdir(base_path)
+                print(f"   קבצים בתיקיה: {files_in_dir}")
+                
+                for css_file in css_files:
+                    css_path = os.path.join(base_path, css_file)
+                    if os.path.exists(css_path):
+                        print(f"   ✅ {css_file} - קיים")
+                    else:
+                        print(f"   ❌ {css_file} - לא קיים")
+            else:
+                print(f"   ❌ התיקיה לא קיימת")
         except Exception as e:
-            print(f"⚠️ לא ניתן לטעון CSS מ-{css_path}: {e}")
-            continue
-    
-    print("⚠️ לא נמצא קובץ CSS - ממשיך עם CSS בסיסי")
+            print(f"   🚨 שגיאה: {e}")
 
-def load_radio_css():
-    """טוען CSS מעוצב לרדיו כפתורים"""
-    radio_css = """
-    div[data-testid="stRadio"] {
-        background: transparent !important;
-        border: none !important;
-        padding: 10px 0 !important;
-        margin: 10px 0 !important;
-    }
-    
-    div[data-testid="stRadio"] > label {
-        display: none !important;
-    }
-    
-    div[data-testid="stRadio"] label {
-        display: flex !important;
-        align-items: center !important;
-        padding: 8px 12px !important;
-        border: 1px solid #e9ecef !important;
-        border-radius: 6px !important;
-        cursor: pointer !important;
-        background: #fafafa !important;
-        margin: 4px 0 !important;
-        font-size: 13px !important;
-        color: #495057 !important;
-        min-height: 36px !important;
-    }
-    
-    div[data-testid="stRadio"] label:hover {
-        background: #f8f9fa !important;
-        border-color: #4A90E2 !important;
-    }
-    
-    div[data-testid="stRadio"] label:has(input:checked) {
-        background: #e3f2fd !important;
-        border-color: #4A90E2 !important;
-        color: #1976d2 !important;
-        font-weight: 600 !important;
-    }
-    """
-    
-    st.markdown(f"<style>{radio_css}</style>", unsafe_allow_html=True)
-
+# ===============================
+# פונקציות עזר
+# ===============================
 def normalize_phone_basic(p: str) -> Optional[str]:
     """נרמול בסיסי של מספר טלפון"""
     d = re.sub(r"\D", "", p or "")
     return d if PHONE_PATTERN.match(d) else None
 
 def send_code(phone: str, code: str) -> bool:
-    """פונקציה משופרת לשליחת קוד אימות"""
+    """שליחת קוד אימות"""
     if not config.is_valid():
         st.error("🚫 שגיאה בהגדרות המערכת - נתוני GREEN-API חסרים")
         return False
@@ -248,315 +157,45 @@ def force_rerun():
     """כפיית ריענון של האפליקציה"""
     st.rerun()
 
-from pathlib import Path
-
-def find_up(start_path, *path_parts):
-    """מחפש קובץ במסלול"""
-    current = Path(start_path)
-    for parent in [current] + list(current.parents):
-        candidate = parent.joinpath(*path_parts)
-        if candidate.exists():
-            return candidate
-    return None
-
-def show_download_guide():
-    """מציג מדריך הורדת אנשי קשר כחלונית בולטת וקטנה"""
-    if st.session_state.get("show_guide", False):
-        # כותרת קטנה יותר
-        st.markdown("""
-        <div style="
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px;
-            border-radius: 12px;
-            margin: 15px 0;
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
-            text-align: center;
-        ">
-            <h3 style="margin: 0; font-size: 20px; font-weight: 600;">
-                📖 מדריך הורדת אנשי קשר מ-WhatsApp
-            </h3>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # תוכן מקוצר במקביל
-        col_text, col_image = st.columns([1.3, 1])
-        
-        with col_text:
-            st.markdown("#### 📋 שלבי ההורדה:")
-            
-            # שלבים קצרים יותר
-            st.markdown("**1.** פתח דפדפן במחשב")
-            st.markdown("**2.** התקן תוסף **[ג'וני](https://chromewebstore.google.com/detail/joni/aakppiadmnaeffmjijolmgmkcfhpglbh)** ב-Chrome")
-            st.markdown("**3.** היכנס ל-WhatsApp Web")
-            st.markdown("**4.** לחץ על סמל **J** בסרגל הכלים")
-            st.markdown("**5.** בחר **אנשי קשר** → **שמירה לקובץ Excel**")
-            st.markdown("**6.** הקובץ יורד אוטומטית")
-            
-            # טיפים קצרים
-            st.info("💡 **חשוב:** התוסף עובד רק ב-Chrome במחשב")
-        
-        with col_image:
-            # נתיבים מרובים לחיפוש התמונה
-            possible_image_paths = [
-                "assets/Joni.png",
-                "../assets/Joni.png", 
-                "./assets/Joni.png",
-                "/app/assets/Joni.png",
-                "styles/assets/Joni.png",
-                "../styles/assets/Joni.png"
-            ]
-            
-            image_found = False
-            for img_path in possible_image_paths:
-                try:
-                    if os.path.exists(img_path):
-                        st.image(img_path, caption="התוסף ג'וני", use_container_width=True)
-                        image_found = True
-                        break
-                except:
-                    continue
-            
-            if not image_found:
-                # תמונה דמה במקום הטקסט
-                st.markdown("""
-                <div style="
-                    background: #f0f4ff;
-                    border: 2px dashed #4A90E2;
-                    border-radius: 8px;
-                    padding: 30px;
-                    text-align: center;
-                    color: #4A90E2;
-                    font-size: 14px;
-                ">
-                    🖼️<br>תמונת המדריך<br>תוצג כאן
-                </div>
-                """, unsafe_allow_html=True)
-        
-        # כפתור סגירה קטן
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            if st.button("✅ סגור", key="close_guide", use_container_width=True, type="primary"):
-                st.session_state.show_guide = False
-                st.rerun()
-
-def load_guide_css():
-    """CSS מיוחד למדריך ואתחול משתנים"""
-    if "upload_confirmed" not in st.session_state:
-        st.session_state.upload_confirmed = False
-
-    if "show_guide" not in st.session_state:
-        st.session_state.show_guide = False
-
-    if "idx" not in st.session_state:
-        st.session_state.idx = 0
-        
-    guide_css = """
-    .stMarkdown a {
-        color: #4A90E2 !important;
-        text-decoration: none !important;
-        font-weight: 600 !important;
-        border-bottom: 2px solid #4A90E2 !important;
-        padding-bottom: 1px !important;
-        transition: all 0.2s ease !important;
-    }
-    
-    .stMarkdown a:hover {
-        color: #2980b9 !important;
-        border-bottom-color: #2980b9 !important;
-        transform: translateY(-1px) !important;
-    }
-    """
-    
-    st.markdown(f"<style>{guide_css}</style>", unsafe_allow_html=True)
-    
-def load_modal_css():
-    """CSS לעיצוב המדריך הבולט"""
-    modal_css = """
-    button[data-testid="baseButton-primary"] {
-        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%) !important;
-        border: none !important;
-        border-radius: 10px !important;
-        padding: 12px 24px !important;
-        font-size: 16px !important;
-        font-weight: 600 !important;
-        color: white !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3) !important;
-    }
-    
-    button[data-testid="baseButton-primary"]:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4) !important;
-    }
-    """
-    
-    st.markdown(f"<style>{modal_css}</style>", unsafe_allow_html=True)
-
-       
-def load_login_css():
-    """טוען CSS למסך הכניסה"""
-    login_css = """
-    .stAppHeader, .stAppToolbar, header[data-testid="stHeader"], .stDeployButton {display:none!important;}
-    
-    .stApp {
-      background: linear-gradient(135deg,#E8EEFF 0%,#DBE6FF 100%)!important;
-      min-height: 100vh!important;
-    }
-    
-    .main .block-container {
-      padding: 2rem!important;
-      max-width: 600px!important;
-      margin: 0 auto!important;
-      background: white!important;
-      border-radius: 20px!important;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.1)!important;
-      margin-top: 3rem!important;
-    }
-    
-    .auth-icon {
-      width: 70px!important;
-      height: 70px!important;
-      background: #E3F2FD!important;
-      border-radius: 50%!important;
-      display: flex!important;
-      align-items: center!important;
-      justify-content: center!important;
-      margin: 0 auto 24px!important;
-      font-size: 28px!important;
-      color: #4A90E2!important;
-    }
-    
-    .auth-title {
-      font-size: 28px!important;
-      font-weight: 800!important;
-      color: #2c3e50!important;
-      margin-bottom: 10px!important;
-      text-align: center!important;
-    }
-    
-    .auth-subtitle {
-      font-size: 15px!important;
-      color: #7f8c8d!important;
-      margin-bottom: 28px!important;
-      text-align: center!important;
-    }
-    
-    .phone-label {
-      font-size: 14px!important;
-      color: #555!important;
-      margin-bottom: 8px!important;
-      text-align: center!important;
-    }
-    
-    .stTextInput > div > div > input {
-      text-align: center!important;
-      font-size: 16px!important;
-      height: 42px!important;
-      width: 100%!important;
-      max-width: 350px!important;
-      margin: 0 auto!important;
-      border: 2px solid #e1e8ed!important;
-      border-radius: 10px!important;
-      direction: ltr!important;
-      background: #fafafa!important;
-      font-family: monospace!important;
-    }
-    
-    .stTextInput > div {
-      display: flex!important;
-      justify-content: center!important;
-      border: none!important;
-      background: transparent!important;
-    }
-    
-    .stTextInput > div > div {
-      border: none!important;
-      background: transparent!important;
-      max-width: 350px!important;
-      width: 100%!important;
-    }
-    
-    .stTextInput > div > div > input:focus {
-      border-color: #4A90E2!important;
-      box-shadow: 0 0 0 3px rgba(74,144,226,.12)!important;
-      outline: none!important;
-    }
-    
-    .stButton > button {
-      width: 100%!important;
-      max-width: 350px!important;
-      height: 42px!important;
-      font-size: 16px!important;
-      background: #7EA6F9!important;
-      color: #fff!important;
-      border: none!important;
-      border-radius: 10px!important;
-      margin: 10px auto!important;
-      display: block!important;
-      font-weight: 600!important;
-      transition: .2s!important;
-    }
-    
-    .stButton > button:hover {
-      background: #5C83D8!important;
-      transform: translateY(-1px)!important;
-      box-shadow: 0 6px 18px rgba(94,131,216,.35)!important;
-    }
-    """
-    
-    st.markdown(f"<style>{login_css}</style>", unsafe_allow_html=True)
-
-def load_file_uploader_css():
-    """CSS מותאם לתיבות העלאת קבצים"""
-    file_css = """
-    div[data-testid="stFileUploader"] {
-        margin: 15px 0 !important;
-        padding: 0 !important;
-    }
-    
-    section[data-testid="stFileUploadDropzone"] {
-        border: 2px dashed #dee2e6 !important;
-        border-radius: 12px !important;
-        background: white !important;
-        padding: 20px 15px !important;
-        text-align: center !important;
-        transition: all 0.3s ease !important;
-        margin: 0 !important;
-        min-height: 80px !important;
-    }
-    
-    section[data-testid="stFileUploadDropzone"]:hover {
-        border-color: #4A90E2 !important;
-        background: #f8f9fa !important;
-        box-shadow: 0 2px 8px rgba(74,144,226,0.15) !important;
-    }
-    """
-    
-    st.markdown(f"<style>{file_css}</style>", unsafe_allow_html=True)
+# ===============================
+# זרימת אימות
+# ===============================
+# החלף את ה-HTML במסך התחברות:
 
 def auth_flow() -> bool:
     """זרימת אימות המשתמש - טלפון וקוד OTP"""
     if st.session_state.get("auth_ok"):
         return True
 
-    load_login_css()
     state = st.session_state.setdefault("auth_state", "phone")
 
-    icon = "💬" if state == "phone" else "🔐"
-    subtitle = "התחבר באמצעות מספר הטלפון שלך" if state == "phone" else "הכנס את הקוד שנשלח אליך"
-    label = "מספר טלפון" if state == "phone" else "קוד אימות"
+    # כותרת אימות מתוקנת
+    if state == "phone":
+        icon = "💬"
+        title = "מערכת שילוב רשימות"
+        subtitle = "התחבר באמצעות מספר הטלפון שלך"
+        label = "מספר טלפון"
+    else:
+        icon = "🔐" 
+        title = "קוד אימות"
+        subtitle = "הזן את הקוד שנשלח לטלפון שלך"
+        label = "קוד אימות"
 
-    st.markdown(f'<div class="auth-icon">{icon}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="auth-title">מערכת שילוב רשימות</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="auth-subtitle">{subtitle}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="phone-label">{label}</div>', unsafe_allow_html=True)
+    # HTML מתוקן
+    st.markdown(f"""
+    <div class="auth-header">
+        <div class="auth-icon">{icon}</div>
+        <h1 class="auth-title">{title}</h1>
+        <p class="auth-subtitle">{subtitle}</p>
+        <div class="phone-label">{label}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     if state == "phone":
         phone = st.text_input("מספר טלפון", placeholder="05X-XXXXXXX",
                               max_chars=10, key="phone_input", label_visibility="hidden")
         
-        if st.button("שלח קוד אימות 💬"):
+        if st.button("שלח קוד אימות 💬", type="primary"):
             p = normalize_phone_basic(phone)
             if not p:
                 st.error("מספר לא תקין.")
@@ -576,28 +215,117 @@ def auth_flow() -> bool:
         expired = (time.time() - st.session_state.code_ts) > CODE_TTL_SECONDS
         if expired: 
             st.warning("הקוד פג תוקף")
-        if st.button("אמת 🔓"):
-            if expired: 
-                st.error("הקוד פג תוקף")
-            elif entry == st.session_state.auth_code:
-                st.session_state.auth_ok = True
-                st.success("✅ התחברת בהצלחה!")
-                time.sleep(1)
-                force_rerun()
-            else:
-                att = st.session_state.get("auth_attempts", 0) + 1
-                st.session_state.auth_attempts = att
-                if att >= MAX_AUTH_ATTEMPTS:
-                    st.error("נחרגת ממספר הניסיונות המותר")
-                    st.session_state.auth_state = "phone"
+            
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("אמת 🔓", type="primary"):
+                if expired: 
+                    st.error("הקוד פג תוקף")
+                elif entry == st.session_state.auth_code:
+                    st.session_state.auth_ok = True
+                    # הודעה מרוכזת
+                    st.markdown("""
+                    <div style="text-align: center; margin: 10px 0;">
+                        <div style="background: #d4edda; color: #155724; padding: 12px; border-radius: 8px; display: inline-block;">
+                            ✅ התחברת בהצלחה!
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    time.sleep(1)
                     force_rerun()
                 else:
-                    st.error(f"קוד שגוי ({MAX_AUTH_ATTEMPTS - att} ניסיונות נותרו)")
+                    att = st.session_state.get("auth_attempts", 0) + 1
+                    st.session_state.auth_attempts = att
+                    if att >= MAX_AUTH_ATTEMPTS:
+                        st.error("נחרגת ממספר הניסיונות המותר")
+                        st.session_state.auth_state = "phone"
+                        force_rerun()
+                    else:
+                        st.error(f"קוד שגוי ({MAX_AUTH_ATTEMPTS - att} ניסיונות נותרו)")
+        
+        with col2:
+            if st.button("↩️ חזרה"):
+                st.session_state.auth_state = "phone"
+                force_rerun()
 
     return False
 
+# ===============================
+# מדריך הורדת קבצים
+# ===============================
+def show_download_guide():
+    """מציג מדריך הורדת אנשי קשר"""
+    if st.session_state.get("show_guide", False):
+        st.markdown("""
+        <div class="guide-modal">
+            <h3>📖 מדריך הורדת אנשי קשר מ-WhatsApp</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col_text, col_image = st.columns([1.3, 1])
+        
+        with col_text:
+            st.markdown("#### 📋 שלבי ההורדה:")
+            
+            st.markdown("""
+            <div class="guide-steps">
+                <div>פתח דפדפן במחשב</div>
+                <div>התקן תוסף <strong><a href="https://chromewebstore.google.com/detail/joni/aakppiadmnaeffmjijolmgmkcfhpglbh">ג'וני</a></strong> ב-Chrome</div>
+                <div>היכנס ל-WhatsApp Web</div>
+                <div>לחץ על סמל <strong>J</strong> בסרגל הכלים</div>
+                <div>בחר <strong>אנשי קשר</strong> → <strong>שמירה לקובץ Excel</strong></div>
+                <div>הקובץ יורד אוטומטית</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.info("💡 **חשוב:** התוסף עובד רק ב-Chrome במחשב")
+        
+        with col_image:
+            # חיפוש תמונה
+            possible_image_paths = [
+                "assets/Joni.png",
+                "../assets/Joni.png", 
+                "./assets/Joni.png",
+                "/app/assets/Joni.png",
+            ]
+            
+            image_found = False
+            for img_path in possible_image_paths:
+                try:
+                    if os.path.exists(img_path):
+                        st.image(img_path, caption="התוסף ג'וני", use_container_width=True)
+                        image_found = True
+                        break
+                except:
+                    continue
+            
+            if not image_found:
+                st.markdown("""
+                <div style="
+                    background: #f0f4ff;
+                    border: 2px dashed #4A90E2;
+                    border-radius: 8px;
+                    padding: 30px;
+                    text-align: center;
+                    color: #4A90E2;
+                    font-size: 14px;
+                ">
+                    🖼️<br>תמונת המדריך<br>תוצג כאן
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # שינוי ה-key כדי למנוע כפילות!
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("✅ סגור", key="close_main_guide", type="primary"):  # ← שינוי כאן!
+                st.session_state.show_guide = False
+                st.rerun()
+
+# ===============================
+# רכיבי ממשק משתמש
+# ===============================
 def create_radio_options(candidates: pd.DataFrame) -> list:
-    """יוצר רשימת אופציות לרדיו כפתורים עם פורמט מיוחד"""
+    """יוצר רשימת אופציות לרדיו כפתורים"""
     options = ["❌ ללא התאמה"]
     
     for _, candidate in candidates.iterrows():
@@ -631,31 +359,21 @@ def get_auto_select_index(candidates: pd.DataFrame, options: list) -> int:
     return 0
 
 def render_guest_profile(cur):
-    """מציג פרופיל מוזמן מעוצב וקומפקטי"""
+    """מציג פרופיל מוזמן"""
     st.markdown(f"""
-    <div style="
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 12px;
-        padding: 16px;
-        margin: 12px 0;
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.25);
-        text-align: center;
-        color: white;
-    ">
-        <div style="font-size: 22px; font-weight: 700; margin-bottom: 12px;">
-            🎯 {cur[NAME_COL]}
-        </div>
-        <div style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; font-size: 14px;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 16px;">🧭</span>
+    <div class="guest-profile">
+        <h2>🎯 {cur[NAME_COL]}</h2>
+        <div class="guest-meta">
+            <div>
+                <span>🧭</span>
                 <strong>צד:</strong> {cur[SIDE_COL]}
             </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 16px;">🧩</span>
+            <div>
+                <span>🧩</span>
                 <strong>קבוצה:</strong> {cur[GROUP_COL]}
             </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 16px;">👥</span>
+            <div>
+                <span>👥</span>
                 <strong>כמות:</strong> {cur[COUNT_COL]}
             </div>
         </div>
@@ -663,6 +381,7 @@ def render_guest_profile(cur):
     """, unsafe_allow_html=True)
 
 def render_match_selection(cur, contacts_df: pd.DataFrame) -> str:
+    """רנדור בחירת התאמות"""
     matches = contacts_df.copy()
     matches["score"] = matches["norm_name"].map(lambda c: full_score(cur.norm_name, c))
 
@@ -678,9 +397,6 @@ def render_match_selection(cur, contacts_df: pd.DataFrame) -> str:
                         .head(5)
 
     options = create_radio_options(candidates)
-    
-    load_radio_css()
-    
     auto_index = get_auto_select_index(candidates, options)
     
     choice = st.radio(
@@ -695,6 +411,7 @@ def render_match_selection(cur, contacts_df: pd.DataFrame) -> str:
 
 def handle_manual_input() -> str:
     """טיפול בהזנת מספר ידנית"""
+    st.markdown('<div class="manual-input">', unsafe_allow_html=True)
     st.markdown("#### 📱 הזנת מספר ידנית:")
     manual_phone = st.text_input(
         "מספר טלפון:", 
@@ -704,10 +421,12 @@ def handle_manual_input() -> str:
     if manual_phone and not normalize_phone_basic(manual_phone):
         st.error("❌ מספר טלפון לא תקין")
         return ""
+    st.markdown('</div>', unsafe_allow_html=True)
     return manual_phone
 
 def handle_contact_search(contacts_df: pd.DataFrame) -> str:
     """טיפול בחיפוש באנשי קשר"""
+    st.markdown('<div class="search-section">', unsafe_allow_html=True)
     st.markdown("#### 🔍 חיפוש באנשי קשר:")
     query = st.text_input(
         "חיפוש:", 
@@ -733,12 +452,14 @@ def handle_contact_search(contacts_df: pd.DataFrame) -> str:
                 key=f"search_result_{st.session_state.get('idx', 0)}"
             )
             if selected_result and selected_result != "בחר תוצאה...":
+                st.markdown('</div>', unsafe_allow_html=True)
                 return selected_result.split("|")[-1].strip()
         else:
             st.info("🔍 לא נמצאו תוצאות")
     elif query:
         st.info("הקלד לפחות 2 תווים לחיפוש")
     
+    st.markdown('</div>', unsafe_allow_html=True)
     return ""
 
 def extract_phone_from_choice(choice: str) -> str:
@@ -751,33 +472,57 @@ def extract_phone_from_choice(choice: str) -> str:
         clean_choice = choice.replace("🎯 ", "")
         return clean_choice.split("|")[-1].strip()
 
-# טעינת CSS ראשי
-load_main_css_fixed()
-load_guide_css()
-load_modal_css()
+# ===============================
+# הגדרות Streamlit וקונפיגורציה
+# ===============================
+config = AppConfig()
+st.set_page_config(page_title=PAGE_TITLE, layout="wide")
+print("🔄 TEST VERSION 1.0 - 05/08/2025")
+
+# אתחול משתנים
+if "upload_confirmed" not in st.session_state:
+    st.session_state.upload_confirmed = False
+if "show_guide" not in st.session_state:
+    st.session_state.show_guide = False
+if "idx" not in st.session_state:
+    st.session_state.idx = 0
+
+# טעינת CSS
+load_css()
 
 # בדיקת אימות
 if not auth_flow():
     st.stop()
 
-# טעינת CSS לתיבות העלאת קבצים
-load_file_uploader_css()
+# ===============================
+# מערכת ראשית
+# ===============================
 
-st.title(PAGE_TITLE)
+if not st.session_state.get('upload_confirmed', False):
+    st.title(PAGE_TITLE)
+else:
+    # כותרת נסתרת/קטנה למערכת פעילה
+    st.markdown('<div style="height: 8px;"></div>', unsafe_allow_html=True)
 
-# הצגת המדריך רק אם נדרש
+# הצגת המדריך
 show_download_guide()
 
 # שלב העלאת קבצים
+# החלף את החלק של העלאת הקבצים ב-app.py עם הקוד הזה:
+
+# שלב העלאת קבצים - גרסה מתוקנת
+# שלב העלאת קבצים - גרסה מתוקנת עם הזחות נכונות
 if not st.session_state.upload_confirmed:
+    
     with st.sidebar:
         st.markdown("## 📂 העלאת קבצים")
         
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.markdown("### 👥 קובץ אנשי קשר")
+        # כפתור מדריך מתוקן
+        st.markdown("### 👥 קובץ אנשי קשר")
+        
+        col1, col2 = st.columns([4, 1])  # יחס רחב יותר
         with col2:
-            if st.button("📖 מדריך", key="help_contacts", help="איך להוריד קובץ אנשי קשר?"):
+            if st.button("📖", key="help_contacts_sidebar", help="מדריך הורדת קבצים", use_container_width=True):
                 st.session_state.show_guide = True
                 force_rerun()
         
@@ -788,25 +533,73 @@ if not st.session_state.upload_confirmed:
             label_visibility="collapsed"
         )
         
+        # Debug - בדוק אם יש קובץ
+        if contacts_file:
+            st.success(f"✅ קובץ אנשי קשר: {contacts_file.name}")
+            print(f"📁 קובץ אנשי קשר נבחר: {contacts_file.name}")
+        
         st.markdown("### 🎉 קובץ מוזמנים")
+        
+        # העלאת קובץ מוזמנים
         guests_file = st.file_uploader(
             "קובץ מוזמנים", 
             type=["xlsx", "xls", "csv"], 
             key="guests_uploader",
             label_visibility="collapsed"
         )
+        
+        # Debug - בדוק אם יש קובץ
+        if guests_file:
+            st.success(f"✅ קובץ מוזמנים: {guests_file.name}")
+            print(f"📁 קובץ מוזמנים נבחר: {guests_file.name}")
 
-        if st.button("✅ אשר קבצים", disabled=not (contacts_file and guests_file), use_container_width=True):
-            with st.spinner("טוען קבצים…"):
-                st.session_state.contacts = load_excel(contacts_file)
-                st.session_state.guests   = load_excel(guests_file)
-                st.session_state.guests["best_score"] = compute_best_scores(
-                    st.session_state.guests, st.session_state.contacts
-                )
-            st.session_state.upload_confirmed = True
-            st.session_state.show_guide = False
-            force_rerun()
+        # כפתור אישור - עם debug
+        files_ready = bool(contacts_file and guests_file)
+        print(f"🔍 קבצים מוכנים: {files_ready} (contacts: {bool(contacts_file)}, guests: {bool(guests_file)})")
+        
+        if st.button("✅ אשר קבצים", 
+                    disabled=not files_ready, 
+                    type="primary",
+                    key="confirm_files_btn"):
+            
+            print("🚀 לחיצה על כפתור אישור קבצים!")
+            
+            try:
+                with st.spinner("⏳ טוען קבצים..."):
+                    print("📊 מתחיל לטעון קבצים...")
+                    
+                    # טעינת קבצים
+                    st.session_state.contacts = load_excel(contacts_file)
+                    print(f"✅ קובץ אנשי קשר נטען: {len(st.session_state.contacts)} שורות")
+                    
+                    st.session_state.guests = load_excel(guests_file)
+                    print(f"✅ קובץ מוזמנים נטען: {len(st.session_state.guests)} שורות")
+                    
+                    # חישוב ציונים
+                    print("🧮 מחשב ציוני התאמה...")
+                    st.session_state.guests["best_score"] = compute_best_scores(
+                        st.session_state.guests, st.session_state.contacts
+                    )
+                    print("✅ ציוני התאמה חושבו")
+                
+                # סימון שהקבצים אושרו
+                st.session_state.upload_confirmed = True
+                st.session_state.show_guide = False
+                
+                print("🎉 קבצים אושרו בהצלחה!")
+                st.success("🎉 קבצים נטענו בהצלחה!")
+                
+                # המתן קצר ורענן
+                time.sleep(1)
+                force_rerun()
+                
+            except Exception as e:
+                print(f"🚨 שגיאה בטעינת קבצים: {str(e)}")
+                st.error(f"שגיאה בטעינת קבצים: {str(e)}")
+                st.session_state.upload_confirmed = False
+    
 
+# אם לא הושלמה העלאת קבצים - עצור כאן
 if not st.session_state.upload_confirmed:
     st.stop()
 
@@ -843,22 +636,34 @@ with st.sidebar:
         use_container_width=True,
     )
 
-# מיון והכנת נתונים לעבודה
+# מיון והכנת נתונים
 df = filtered_df.sort_values(["best_score", NAME_COL], ascending=[False, True])
 
 # בדיקה אם סיימנו
 if st.session_state.idx >= len(df):
-    st.success("🎉 סיימנו!")
-    st.download_button("⬇️ סיום", data=to_buf(st.session_state.guests,), file_name="סיום.xlsx", use_container_width=True)
+    st.markdown("""
+    <div class="completion-card">
+        <h2>🎉 סיימנו!</h2>
+        <p>כל המוזמנים עובדו בהצלחה</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.download_button(
+        "📥 הורד קובץ סופי",
+        data=to_buf(st.session_state.guests),
+        file_name="סיום.xlsx",
+        type="primary",
+        use_container_width=True
+    )
     st.stop()
 
 # המוזמן הנוכחי
 cur = df.iloc[st.session_state.idx]
 
-# תצוגת פרטי המוזמן המעוצבת
+# תצוגת פרטי המוזמן
 render_guest_profile(cur)
 
-# בחירת התאמות עם radio buttons
+# בחירת התאמות
 choice = render_match_selection(cur, st.session_state.contacts)
 
 # טיפול בהזנות נוספות
@@ -870,18 +675,13 @@ if choice.startswith("➕"):
 elif choice.startswith("🔍"):
     search_phone = handle_contact_search(st.session_state.contacts)
 
-# מרווח לפני הכפתורים
-st.markdown("---")
-
 # כפתורי ניווט
+st.markdown("---")
+st.markdown('<div class="navigation-buttons">', unsafe_allow_html=True)
 col1, col2 = st.columns(2)
 
+# כפתור אישור בצד שמאל (col1)
 with col1:
-    if st.button("⬅️ חזרה", disabled=(st.session_state.idx == 0), use_container_width=True):
-        st.session_state.idx = max(0, st.session_state.idx - 1)
-        force_rerun()
-
-with col2:
     # בדיקה אם יש ערך לשמירה
     can_save = False
     save_value = None
@@ -899,7 +699,7 @@ with col2:
         save_value = extract_phone_from_choice(choice)
         can_save = True
     
-    if st.button("✅ אישור", disabled=not can_save, use_container_width=True):
+    if st.button("✅ אישור", disabled=not can_save, type="primary", use_container_width=True):
         # שמירת הערך
         formatted_phone = format_phone(save_value) if save_value else ""
         st.session_state.guests.at[cur.name, PHONE_COL] = formatted_phone
@@ -907,3 +707,11 @@ with col2:
         # מעבר להבא
         st.session_state.idx += 1
         force_rerun()
+
+# כפתור חזרה בצד ימין (col2)
+with col2:
+    if st.button("⬅️ חזרה", disabled=(st.session_state.idx == 0), use_container_width=True):
+        st.session_state.idx = max(0, st.session_state.idx - 1)
+        force_rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)

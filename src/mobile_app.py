@@ -1,16 +1,11 @@
-import time, secrets, re
+import time, secrets, re, os
 from datetime import datetime
-from typing import Optional, Tuple
-import base64
-import os
+from typing import Optional
 import pandas as pd
 import streamlit as st
 import requests
 from pathlib import Path
 import sys
-
-# הוספת התיקייה הראשית ל-path כדי לייבא את logic
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from logic import (
     NAME_COL, PHONE_COL, COUNT_COL, SIDE_COL, GROUP_COL,
@@ -18,6 +13,9 @@ from logic import (
     format_phone, normalize, compute_best_scores, full_score,
 )
 
+# ===============================
+# קבועים ותצורה
+# ===============================
 PAGE_TITLE = "📱 מיזוג טלפונים"
 CODE_TTL_SECONDS = 300
 MAX_AUTH_ATTEMPTS = 5
@@ -26,10 +24,13 @@ PHONE_PATTERN = re.compile(r"^0\d{9}$")
 # הגדרות מובייל
 st.set_page_config(
     page_title=PAGE_TITLE, 
-    layout="centered",  # במקום wide
-    initial_sidebar_state="collapsed"  # סייד בר מוסתר
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
+# ===============================
+# מחלקת תצורה
+# ===============================
 class AppConfig:
     def __init__(self):
         self.green_id = None
@@ -63,142 +64,51 @@ class AppConfig:
             return False
         return True
 
-config = AppConfig()
+# ===============================
+# פונקציות CSS
+# ===============================
+def load_css():
+    """טוען את כל קבצי ה-CSS הנדרשים למובייל"""
+    css_files = []
+    
+    # רשימת נתיבים אפשריים
+    possible_paths = [
+        "../styles/",
+        "styles/", 
+        "/app/styles/",
+        "./styles/",
+    ]
+    
+    # קבצי CSS לטעינה
+    if st.session_state.get("auth_ok"):
+        # במערכת הראשית
+        css_files = ["components.css", "main.css", "mobile.css"]
+    else:
+        # במסך התחברות
+        css_files = ["components.css", "login.css"]
+    
+    # טעינת הקבצים
+    for css_file in css_files:
+        css_loaded = False
+        for base_path in possible_paths:
+            css_path = os.path.join(base_path, css_file)
+            try:
+                if os.path.exists(css_path):
+                    with open(css_path, encoding="utf-8") as f:
+                        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+                        print(f"✅ CSS נטען: {css_path}")
+                        css_loaded = True
+                        break
+            except Exception as e:
+                print(f"⚠️ שגיאה בטעינת {css_path}: {e}")
+                continue
+        
+        if not css_loaded:
+            print(f"⚠️ לא נמצא קובץ CSS: {css_file}")
 
-def load_mobile_css():
-    """CSS מותאם למובייל"""
-    mobile_css = """
-    /* הסתרת header של streamlit */
-    .stAppHeader, .stAppToolbar, header[data-testid="stHeader"], .stDeployButton {
-        display: none !important;
-    }
-    
-    /* רקע נקי */
-    .stApp {
-        background: #f8f9fa !important;
-    }
-    
-    /* מיכל ראשי מותאם למובייל */
-    .main .block-container {
-        padding: 1rem 0.5rem !important;
-        max-width: 100% !important;
-        margin: 0 !important;
-    }
-    
-    /* כפתורים גדולים למובייל */
-    .stButton > button {
-        width: 100% !important;
-        padding: 16px !important;
-        font-size: 16px !important;
-        min-height: 50px !important;
-        border-radius: 12px !important;
-        font-weight: 600 !important;
-        margin: 8px 0 !important;
-    }
-    
-    /* כפתור ראשי */
-    .stButton > button[data-testid="baseButton-primary"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        color: white !important;
-        border: none !important;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
-    }
-    
-    /* רדיו כפתורים למובייל */
-    div[data-testid="stRadio"] label {
-        padding: 16px !important;
-        font-size: 16px !important;
-        min-height: 55px !important;
-        border-radius: 12px !important;
-        margin: 6px 0 !important;
-    }
-    
-    /* שדות טקסט למובייל */
-    .stTextInput input {
-        font-size: 16px !important;
-        padding: 16px !important;
-        min-height: 50px !important;
-        border-radius: 12px !important;
-        border: 2px solid #e9ecef !important;
-    }
-    
-    .stTextInput input:focus {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15) !important;
-    }
-    
-    /* קארד מוזמן */
-    .guest-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        border-radius: 16px !important;
-        padding: 20px !important;
-        margin: 16px 0 !important;
-        color: white !important;
-        text-align: center !important;
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3) !important;
-    }
-    
-    /* פקדי ניהול */
-    .mobile-controls {
-        background: white !important;
-        border-radius: 16px !important;
-        padding: 16px !important;
-        margin: 16px 0 !important;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
-    }
-    
-    /* התקדמות */
-    .stProgress > div > div {
-        height: 12px !important;
-        border-radius: 6px !important;
-    }
-    
-    /* מולטי סלקט למובייל */
-    .stMultiSelect label {
-        font-size: 16px !important;
-        font-weight: 600 !important;
-    }
-    
-    /* עמודות למובייל */
-    div[data-testid="column"] {
-        padding: 0 4px !important;
-    }
-    
-    /* כותרות */
-    .stMarkdown h1 {
-        font-size: 28px !important;
-        text-align: center !important;
-        margin: 16px 0 !important;
-    }
-    
-    .stMarkdown h2 {
-        font-size: 22px !important;
-        margin: 12px 0 !important;
-    }
-    
-    .stMarkdown h3 {
-        font-size: 18px !important;
-        margin: 10px 0 !important;
-    }
-    
-    /* הסתרת סייד בר לחלוטין */
-    section[data-testid="stSidebar"] {
-        display: none !important;
-    }
-    
-    /* מדריך למובייל */
-    .mobile-guide {
-        background: white !important;
-        border-radius: 16px !important;
-        padding: 20px !important;
-        margin: 16px 0 !important;
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15) !important;
-        border: 2px solid #667eea !important;
-    }
-    """
-    
-    st.markdown(f"<style>{mobile_css}</style>", unsafe_allow_html=True)
-
+# ===============================
+# פונקציות עזר
+# ===============================
 def normalize_phone_basic(p: str) -> Optional[str]:
     """נרמול בסיסי של מספר טלפון"""
     d = re.sub(r"\D", "", p or "")
@@ -228,6 +138,9 @@ def send_code(phone: str, code: str) -> bool:
         st.error("שגיאה בשליחת הודעה")
         return False
 
+# ===============================
+# זרימת אימות למובייל
+# ===============================
 def mobile_auth_flow() -> bool:
     """זרימת אימות מותאמת למובייל"""
     if st.session_state.get("auth_ok"):
@@ -310,25 +223,21 @@ def mobile_auth_flow() -> bool:
 
     return False
 
-def find_up(start_path, *path_parts):
-    """מחפש קובץ במסלול"""
-    current = Path(start_path)
-    for parent in [current] + list(current.parents):
-        candidate = parent.joinpath(*path_parts)
-        if candidate.exists():
-            return candidate
-    return None
-
+# ===============================
+# מדריך מובייל
+# ===============================
 def mobile_guide():
     """מדריך מותאם למובייל"""
     if st.session_state.get("show_guide", False):
-        st.markdown('<div class="mobile-guide">', unsafe_allow_html=True)
-        
-        st.markdown("### 📖 מדריך הורדת אנשי קשר")
+        st.markdown("""
+        <div class="guide-modal">
+            <h3>📖 מדריך הורדת אנשי קשר</h3>
+        </div>
+        """, unsafe_allow_html=True)
         
         # תמונה למעלה
-        img_path = find_up(Path(__file__).resolve().parent, "assets", "Joni.png")
-        if img_path and img_path.exists():
+        img_path = Path(__file__).resolve().parent.parent / "assets" / "Joni.png"
+        if img_path.exists():
             st.image(str(img_path), caption="התוסף ג'וני ב-WhatsApp Web", use_container_width=True)
         
         st.markdown("#### 📋 שלבי ההורדה:")
@@ -350,9 +259,10 @@ def mobile_guide():
         if st.button("✅ הבנתי", key="close_guide", type="primary"):
             st.session_state.show_guide = False
             st.rerun()
-        
-        st.markdown('</div>', unsafe_allow_html=True)
 
+# ===============================
+# העלאת קבצים למובייל
+# ===============================
 def mobile_file_upload():
     """העלאת קבצים למובייל"""
     st.markdown("### 📂 העלאת קבצים")
@@ -393,6 +303,9 @@ def mobile_file_upload():
         time.sleep(1)
         st.rerun()
 
+# ===============================
+# פקדי ניהול למובייל
+# ===============================
 def mobile_controls():
     """פקדי ניהול למובייל"""
     st.markdown('<div class="mobile-controls">', unsafe_allow_html=True)
@@ -433,12 +346,15 @@ def mobile_controls():
     
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ===============================
+# רכיבי ממשק למובייל
+# ===============================
 def render_guest_profile_mobile(cur):
     """פרופיל מוזמן למובייל"""
     st.markdown(f"""
-    <div class="guest-card">
-        <h2 style="margin: 0 0 16px 0; font-size: 24px;">🎯 {cur[NAME_COL]}</h2>
-        <div style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap;">
+    <div class="guest-profile">
+        <h2>🎯 {cur[NAME_COL]}</h2>
+        <div class="guest-meta">
             <div><strong>צד:</strong> {cur[SIDE_COL]}</div>
             <div><strong>קבוצה:</strong> {cur[GROUP_COL]}</div>
             <div><strong>כמות:</strong> {cur[COUNT_COL]}</div>
@@ -498,8 +414,10 @@ def extract_phone_from_choice_mobile(choice: str) -> str:
         clean_choice = choice.replace("🎯 ", "")
         return clean_choice.split("|")[-1].strip()
 
-# הרצת האפליקציה
-load_mobile_css()
+# ===============================
+# הרצת האפליקציה המובייל
+# ===============================
+config = AppConfig()
 
 # אתחול משתנים
 if "upload_confirmed" not in st.session_state:
@@ -508,6 +426,9 @@ if "show_guide" not in st.session_state:
     st.session_state.show_guide = False
 if "idx" not in st.session_state:
     st.session_state.idx = 0
+
+# טעינת CSS
+load_css()
 
 # בדיקת אימות
 if not mobile_auth_flow():
@@ -535,7 +456,13 @@ df = filtered_df.sort_values(["best_score", NAME_COL], ascending=[False, True])
 
 # בדיקה אם סיימנו
 if st.session_state.idx >= len(df):
-    st.success("🎉 סיימנו! כל המוזמנים עובדו.")
+    st.markdown("""
+    <div class="completion-card">
+        <h2>🎉 סיימנו!</h2>
+        <p>כל המוזמנים עובדו בהצלחה.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.download_button(
         "📥 הורד קובץ סופי",
         data=to_buf(st.session_state.guests),
@@ -558,6 +485,7 @@ manual_phone = ""
 search_phone = ""
 
 if choice.startswith("➕"):
+    st.markdown('<div class="manual-input">', unsafe_allow_html=True)
     st.markdown("### 📱 הזנת מספר ידנית")
     manual_phone = st.text_input(
         "מספר טלפון:", 
@@ -568,8 +496,10 @@ if choice.startswith("➕"):
     if manual_phone and not normalize_phone_basic(manual_phone):
         st.error("❌ מספר לא תקין")
         manual_phone = ""
+    st.markdown('</div>', unsafe_allow_html=True)
 
 elif choice.startswith("🔍"):
+    st.markdown('<div class="search-section">', unsafe_allow_html=True)
     st.markdown("### 🔍 חיפוש באנשי קשר")
     query = st.text_input(
         "חיפוש:", 
@@ -597,9 +527,12 @@ elif choice.startswith("🔍"):
             )
             if selected and selected != "בחר תוצאה...":
                 search_phone = selected.split("|")[-1].strip()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # כפתורי ניווט
 st.markdown("---")
+
+st.markdown('<div class="navigation-buttons">', unsafe_allow_html=True)
 col1, col2 = st.columns(2)
 
 with col1:
@@ -633,3 +566,5 @@ with col2:
         # מעבר הבא
         st.session_state.idx += 1
         st.rerun()
+
+st.markdown('</div>', unsafe_allow_html=True)
