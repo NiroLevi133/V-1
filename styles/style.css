@@ -1,75 +1,763 @@
-/* ====== מינימלי ואחיד לכל המערכת ====== */
-:root{
-  --h:60px;      /* גובה אחיד לכל כפתור ושדה */
-  --r:12px;      /* רדיוס אחיד */
-  --fs:14px;     /* גודל טקסט אחיד */
+/* ===== מערכת מיזוג טלפונים - עיצוב אחיד מעודכן ===== */
+:root {
+  --primary: #4A90E2;
+  --primary-hover: #3a78c2;
+  --gradient-start: #E8EEFF;
+  --gradient-end: #DBE6FF;
+  --text-dark: #2c3e50;
+  --text-medium: #555;
+  --text-light: #7f8c8d;
+  --border-color: #e1e8ed;
+  --border-focus: #4A90E2;
+  --background-light: #fafafa;
+  --white: #ffffff;
+  --shadow: 0 12px 24px rgba(0,0,0,.1);
+  --shadow-hover: 0 4px 12px rgba(74,144,226,.25);
+  --radius: 8px;
+  --radius-large: 16px;
+  --font-family: 'Segoe UI','Heebo','Alef',sans-serif;
 }
 
-/* RTL בסיסי – בלי לשנות פריסות קיימות */
-body, .stApp, .main, .block-container { direction: rtl; }
-
-/* 1) מרכז את כל הכפתורים */
-.stButton, div[data-testid="stButton"] {
-  display:flex !important;
-  justify-content:center !important;
+/* ===== בסיס המערכת ===== */
+html, body, .stApp {
+  direction: rtl !important;
+  font-family: var(--font-family) !important;
+  color: var(--text-dark) !important;
 }
 
-/* 2) כפתורים – גובה/פונט/רדיוס אחידים */
+/* הסתרת כותרת Streamlit */
+.stAppHeader, .stAppToolbar, header[data-testid="stHeader"] {
+  display: none !important;
+}
+
+/* ===== עיצוב דף ההתחברות - סגנון מקצועי ===== */
+body:not(.auth-completed) .stApp,
+.stApp:not(.main-app) {
+  background: linear-gradient(135deg, #E8EEFF 0%, #DBE6FF 100%) !important;
+  min-height: 100vh !important;
+}
+
+/* מיכל מרכזי לכרטיס התחברות */
+.main .block-container {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  min-height: 100vh !important;
+  width: 100% !important;
+  padding: 20px !important;
+  max-width: none !important;
+}
+
+.auth-header {
+  background: #fff !important;
+  border-radius: 20px !important;
+  padding: 50px 40px !important;
+  box-shadow: 0 20px 40px rgba(0,0,0,.12) !important;
+  text-align: center !important;
+  max-width: 520px !important;
+  width: 90% !important;
+  font-family: 'Segoe UI','Heebo','Alef',sans-serif !important;
+  direction: rtl !important;
+  margin: 0 auto !important;
+  position: relative !important;
+}
+
+.auth-icon {
+  width: 70px !important;
+  height: 70px !important;
+  background: #E3F2FD !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 auto 24px !important;
+  font-size: 28px !important;
+  color: #4A90E2 !important;
+}
+
+.auth-title {
+  font-size: 28px !important;
+  font-weight: 800 !important;
+  color: #2c3e50 !important;
+  margin-bottom: 10px !important;
+}
+
+.auth-subtitle {
+  font-size: 15px !important;
+  color: #7f8c8d !important;
+  margin-bottom: 28px !important;
+}
+
+.phone-label {
+  font-size: 14px !important;
+  color: #555 !important;
+  text-align: right !important;
+  margin: 0 0 8px !important;
+  font-weight: 500 !important;
+  display: block !important;
+}
+
+/* ===== הסרה מוחלטת של מסגרות Streamlit ===== */
+.stTextInput, .stTextInput > div, .stTextInput > div > div, .stTextInput > div > div > div,
+div[data-testid="stTextInput"], div[data-testid="stTextInput"] > div, 
+div[data-testid="stTextInput"] > div > div, div[data-testid="stTextInput"] > div > div > div,
+[data-baseweb="base-input"], [data-baseweb="base-input"] > div,
+[data-baseweb="input"], [data-baseweb="input"] > div {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ===== שדות הטקסט - סגנון מקצועי ===== */
+.stTextInput input,
+input[type="text"],
+input[type="tel"],
+input[type="password"] {
+  text-align: center !important;
+  font-size: 16px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 12px 16px !important;
+  border: 2px solid #e1e8ed !important;
+  border-radius: 10px !important;
+  background: #fafafa !important;
+  margin-bottom: 18px !important;
+  direction: ltr !important;
+  font-family: monospace !important;
+  width: 100% !important;
+  max-width: 320px !important;
+  box-sizing: border-box !important;
+  outline: none !important;
+  transition: all 0.2s ease !important;
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.stTextInput input:focus,
+input[type="text"]:focus,
+input[type="tel"]:focus,
+input[type="password"]:focus {
+  border-color: #4A90E2 !important;
+  box-shadow: 0 0 0 3px rgba(74,144,226,.12) !important;
+  outline: none !important;
+}
+
+.stTextInput input:focus,
+input[type="text"]:focus,
+input[type="tel"]:focus,
+input[type="password"]:focus {
+  border-color: var(--border-focus) !important;
+  box-shadow: 0 0 0 2px rgba(74,144,226,.1) !important;
+  outline: none !important;
+}
+
+/* ===== כפתורים - סגנון מקצועי ===== */
+.stButton {
+  margin-top: 6px !important;
+  display: flex !important;
+  justify-content: center !important;
+  max-width: 320px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
 .stButton > button,
 div[data-testid="stButton"] button,
-div[data-baseweb="button"] > button,
 button {
-  height: var(--h) !important;
-  min-height: var(--h) !important;
-  line-height: var(--h) !important;
-  padding: 0 16px !important;
-  font-size: var(--fs) !important;
-  border-radius: var(--r) !important;
-}
-
-/* 3) תיבות קלט – מוריד את המסגרת האפורה של המעטפת וה-input */
-div[data-testid="stTextInput"] > div { padding:0 !important; }
-div[data-testid="stTextInput"] > div > div,
-[data-baseweb="base-input"],
-[data-baseweb="base-input"] > div {
-  background: transparent !important;
-  border: 0 !important;
+  width: 100% !important;
+  padding: 12px 16px !important;
+  font-size: 16px !important;
+  height: auto !important;
+  min-height: 42px !important;
+  background: #7EA6F9 !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  font-family: var(--font-family) !important;
   box-shadow: none !important;
 }
 
-.stTextInput input,
-.stTextArea textarea,
-[data-baseweb="base-input"] input,
-[data-baseweb="base-input"] textarea,
-input[type="text"], input[type="tel"], input[type="password"], textarea {
-  height: var(--h) !important;
-  min-height: var(--h) !important;
-  padding: 0 12px !important;
-  font-size: var(--fs) !important;
-  border-radius: var(--r) !important;
-  border: 0 !important;
-  box-shadow: none !important;
+.stButton > button:hover,
+div[data-testid="stButton"] button:hover,
+button:hover {
+  background: #5C83D8 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 18px rgba(94,131,216,.35) !important;
+}
+
+.stButton > button[data-testid="baseButton-primary"] {
+  background: #7EA6F9 !important;
+}
+
+.stButton > button[data-testid="baseButton-primary"]:hover {
+  background: #5C83D8 !important;
+}
+
+.stButton > button:hover,
+div[data-testid="stButton"] button:hover,
+button:hover {
+  background: #5C83D8 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: var(--shadow-hover) !important;
+}
+
+.stButton > button[data-testid="baseButton-primary"] {
+  background: var(--primary) !important;
+}
+
+.stButton > button[data-testid="baseButton-primary"]:hover {
+  background: var(--primary-hover) !important;
+}
+
+/* ===== עיצוב המערכת הראשית - שונה מההתחברות ===== */
+body.auth-completed .stApp,
+.stApp.main-app {
+  background: #f9fafb !important;
+  min-height: 100vh !important;
+}
+
+/* עיצוב שדות ברגילים במערכת הראשית */
+.main-app .stTextInput input,
+.main-app input[type="text"],
+.main-app input[type="tel"],
+.main-app input[type="password"] {
+  text-align: center !important;
+  font-size: 11px !important;
+  height: 20px !important;
+  min-height: 20px !important;
+  padding: 2px 6px !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 4px !important;
+  background: var(--background-light) !important;
+  margin: 0 0 4px 0 !important;
+  direction: ltr !important;
+  font-family: monospace !important;
+  width: 120px !important;
+  max-width: 120px !important;
+  box-sizing: border-box !important;
   outline: none !important;
-  width: 250px !important;         /* רוחב קומפקטי ונקי */
+  transition: border-color 0.2s ease !important;
   display: block !important;
-  margin: 0 auto !important;       /* במרכז כברירת מחדל */
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* כפתורים במערכת הראשית */
+.main-app .stButton > button,
+.main-app div[data-testid="stButton"] button,
+.main-app button {
+  width: 160px !important;
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  background: #7EA6F9 !important;
+  color: var(--white) !important;
+  border: none !important;
+  border-radius: 4px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  font-family: var(--font-family) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+}
+
+/* ===== סייד בר מחודש ומסודר ===== */
+.stSidebar {
+  width: 320px !important;
+  transition: all 0.3s ease !important;
   background: #fff !important;
-  text-align: center;               /* שדות אימות נוחים */
+  border-right: 1px solid #e5e7eb !important;
+  position: relative !important;
 }
 
-/* Selectbox – תיאום לגובה */
-div[data-baseweb="select"] > div {
-  height: var(--h) !important;
-  min-height: var(--h) !important;
-  border-radius: var(--r) !important;
-  font-size: var(--fs) !important;
+.stSidebar.hidden {
+  width: 0px !important;
+  overflow: hidden !important;
+  border: none !important;
 }
 
-/* 4) ספציפית: הוספת מספר ידנית + חיפוש אנשי קשר – לימין ורוחב קטן יותר */
-.manual-input div[data-testid="stTextInput"] input,
-.search-section div[data-testid="stTextInput"] input {
-  width: 220px !important;
+.stSidebar > div {
+  padding: 10px 8px !important;
+}
+
+/* כותרת סייד בר */
+.sidebar-header {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: var(--text-dark) !important;
+  margin-bottom: 15px !important;
+  text-align: center !important;
+  padding: 8px 0 !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+/* סטייל לקבצים שהועלו בהצלחה - היילה ירוקה */
+.file-uploaded {
+  background: rgba(34, 197, 94, 0.15) !important;
+  border: 2px solid rgba(34, 197, 94, 0.4) !important;
+  border-radius: 8px !important;
+  padding: 8px !important;
+  margin: 4px 0 !important;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.1) !important;
+}
+
+.file-uploaded .stFileUploader > div {
+  background: rgba(34, 197, 94, 0.1) !important;
+  border: 1px solid rgba(34, 197, 94, 0.5) !important;
+}
+
+.file-uploaded .stFileUploader button {
+  background: rgba(34, 197, 94, 0.9) !important;
+  color: white !important;
+  border: 1px solid rgba(34, 197, 94, 0.8) !important;
+}
+
+/* הסתרת הטקסט הירוק */
+.file-uploaded div[style*="color: #059669"] {
+  display: none !important;
+}
+
+/* כפתורי העלאה רגילים שקופים לבנים */
+.stSidebar .stFileUploader > div {
+  background: rgba(255, 255, 255, 0.7) !important;
+  border: 1px solid rgba(74, 144, 226, 0.3) !important;
+  border-radius: 8px !important;
+  padding: 8px !important;
+  margin: 4px 0 !important;
+}
+
+.stSidebar .stFileUploader button {
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: var(--primary) !important;
+  border: 1px solid rgba(74, 144, 226, 0.5) !important;
+  font-size: 10px !important;
+  height: 24px !important;
+  padding: 2px 8px !important;
+}
+
+.stSidebar .stFileUploader button:hover {
+  background: rgba(255, 255, 255, 1) !important;
+  border-color: var(--primary) !important;
+}
+
+/* שורה עם טקסט וכפתור מדריך */
+.file-row {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 6px !important;
+}
+
+.file-label {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--text-dark) !important;
+}
+
+.guide-btn {
+  background: #f0f4ff !important;
+  color: var(--primary) !important;
+  border: 1px solid rgba(74, 144, 226, 0.3) !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+  font-size: 9px !important;
+  cursor: pointer !important;
+  height: 20px !important;
+  min-width: 40px !important;
+}
+
+.guide-btn:hover {
+  background: var(--primary) !important;
+  color: white !important;
+}
+
+/* כפתור סגירת/פתיחת סייד בר */
+.sidebar-toggle {
+  position: fixed !important;
+  top: 15px !important;
+  right: 15px !important;
+  z-index: 1000 !important;
+  background: #dc2626 !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 50% !important;
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 14px !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.3s ease !important;
+}
+
+.sidebar-toggle:hover {
+  background: #b91c1c !important;
+  transform: scale(1.1) !important;
+}
+
+.sidebar-toggle.show-sidebar {
+  background: #22c55e !important;
+  font-size: 16px !important;
+}
+
+.sidebar-toggle.show-sidebar:hover {
+  background: #16a34a !important;
+}
+
+/* הקטנת תוכן סייד בר ב-25% */
+.stSidebar .stMarkdown,
+.stSidebar .stSelectbox,
+.stSidebar .stMultiSelect,
+.stSidebar .stCheckbox,
+.stSidebar .stButton,
+.stSidebar .stDownloadButton {
+  font-size: 10px !important;
+}
+
+.stSidebar .stMarkdown h1 {
+  font-size: 14px !important;
+  margin-bottom: 8px !important;
+}
+
+.stSidebar .stMarkdown h2,
+.stSidebar .stMarkdown h3 {
+  font-size: 12px !important;
+  margin-bottom: 6px !important;
+}
+
+.stSidebar .stMarkdown p,
+.stSidebar .stMarkdown div {
+  font-size: 10px !important;
+  line-height: 1.3 !important;
+}
+
+.stSidebar .stSelectbox > div,
+.stSidebar .stMultiSelect > div {
+  height: 24px !important;
+  font-size: 10px !important;
+  min-height: 24px !important;
+}
+
+.stSidebar .stButton > button,
+.stSidebar .stDownloadButton > button {
+  height: 24px !important;
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+}
+
+.stSidebar .stProgress {
+  height: 6px !important;
+}
+
+/* ===== פרופיל מוזמן מעוצב עם צבעים ===== */
+.guest-profile {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f8fafc 100%) !important;
+  border-radius: 12px !important;
+  padding: 16px !important;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.06) !important;
+  margin-bottom: 16px !important;
+  border: 1px solid #cbd5e1 !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.guest-profile::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 3px !important;
+  background: linear-gradient(90deg, var(--primary) 0%, #7EA6F9 50%, #60a5fa 100%) !important;
+}
+
+.guest-profile h2 {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  color: var(--text-dark) !important;
+  margin-bottom: 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.guest-meta {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr 1fr !important;
+  gap: 10px !important;
+  margin-top: 10px !important;
+  background: rgba(255,255,255,0.8) !important;
+  padding: 10px !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(203, 213, 225, 0.5) !important;
+}
+
+.guest-meta > div {
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  font-size: 12px !important;
+  color: var(--text-medium) !important;
+  font-weight: 500 !important;
+}
+
+.guest-meta span {
+  font-size: 13px !important;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1)) !important;
+}
+
+/* ===== רדיו כפתורים תקינים - מתוקן ===== */
+.stRadio > div,
+div[data-testid="stRadio"] > div {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  margin-bottom: 4px !important;
+}
+
+/* תיקון לכל סוגי הרדיו ב-Streamlit */
+.stRadio > div > label,
+div[data-testid="stRadio"] > div > label,
+.stRadio label,
+div[data-testid="stRadio"] label {
+  font-size: 12px !important;
+  padding: 6px 10px !important;
+  border-radius: 4px !important;
+  margin: 2px 0 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  border: 1px solid #e2e8f0 !important;
+  background: transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03) !important;
+  line-height: 1.3 !important;
+  width: 100% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* תיקון לתוכן הלייבל */
+.stRadio > div > label > span,
+div[data-testid="stRadio"] > div > label > span,
+.stRadio label > span,
+div[data-testid="stRadio"] label > span {
+  width: 100% !important;
+  display: block !important;
   text-align: right !important;
+  direction: rtl !important;
+}
+
+/* רדיו באטון */
+.stRadio input[type="radio"],
+div[data-testid="stRadio"] input[type="radio"] {
+  margin-left: 6px !important;
   margin-right: 0 !important;
-  margin-left: auto !important;     /* מיושר לימין */
+  flex-shrink: 0 !important;
+}
+
+/* hover */
+.stRadio > div > label:hover,
+div[data-testid="stRadio"] > div > label:hover,
+.stRadio label:hover,
+div[data-testid="stRadio"] label:hover {
+  background: rgba(240, 244, 255, 0.5) !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 2px 4px rgba(74,144,226,0.1) !important;
+}
+
+/* אופציה נבחרת */
+.stRadio input[type="radio"]:checked + label,
+div[data-testid="stRadio"] input[type="radio"]:checked + label {
+  background: rgba(74, 144, 226, 0.1) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary) !important;
+  font-weight: 600 !important;
+}
+
+/* ===== כפתורי ניווט קטנים יותר ===== */
+.navigation-buttons {
+  margin-top: 15px !important;
+  padding: 10px 0 !important;
+}
+
+.navigation-buttons .stButton {
+  margin: 0 5px !important;
+}
+
+.navigation-buttons .stButton > button {
+  height: 28px !important;
+  font-size: 12px !important;
+  border-radius: 4px !important;
+  font-weight: 500 !important;
+  width: auto !important;
+  min-width: 70px !important;
+  padding: 4px 12px !important;
+}
+
+/* ===== הזנה ידנית וחיפוש קומפקטיים ===== */
+.manual-input,
+.search-section {
+  background: rgba(248, 250, 252, 0.8) !important;
+  border-radius: 6px !important;
+  padding: 8px !important;
+  margin: 8px 0 !important;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+}
+
+.manual-input h4,
+.search-section h4 {
+  color: var(--text-dark) !important;
+  font-size: 12px !important;
+  margin-bottom: 6px !important;
+}
+
+.manual-input .stTextInput input,
+.search-section .stTextInput input {
+  text-align: right !important;
+  direction: rtl !important;
+  font-family: var(--font-family) !important;
+  height: 22px !important;
+  font-size: 11px !important;
+}
+
+/* ===== מדריך ===== */
+.guide-modal {
+  background: var(--white) !important;
+  border-radius: 10px !important;
+  padding: 20px !important;
+  margin-bottom: 20px !important;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.08) !important;
+  border: 1px solid #e5e7eb !important;
+}
+
+.guide-modal h3 {
+  color: var(--text-dark) !important;
+  font-size: 16px !important;
+  margin-bottom: 12px !important;
+  text-align: center !important;
+}
+
+/* ===== הודעות מערכת ===== */
+.stSuccess, .stError, .stInfo, .stWarning {
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  padding: 8px !important;
+}
+
+.stSuccess {
+  background: #d1fae5 !important;
+  border: 1px solid #34d399 !important;
+  color: #065f46 !important;
+}
+
+.stError {
+  background: #fee2e2 !important;
+  border: 1px solid #f87171 !important;
+  color: #7f1d1d !important;
+}
+
+.stInfo {
+  background: #dbeafe !important;
+  border: 1px solid #60a5fa !important;
+  color: #1e3a8a !important;
+}
+
+.stWarning {
+  background: #fef3c7 !important;
+  border: 1px solid #f59e0b !important;
+  color: #92400e !important;
+}
+
+/* ===== התקדמות ===== */
+.stProgress > div > div {
+  background: var(--primary) !important;
+  border-radius: 8px !important;
+}
+
+/* ===== סיום מוצלח ===== */
+.completion-card {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%) !important;
+  border-radius: 10px !important;
+  padding: 20px !important;
+  text-align: center !important;
+  margin: 15px 0 !important;
+  border: 1px solid #34d399 !important;
+}
+
+.completion-card h2 {
+  color: #065f46 !important;
+  font-size: 18px !important;
+  margin-bottom: 8px !important;
+}
+
+.completion-card p {
+  color: #047857 !important;
+  font-size: 14px !important;
+}
+
+/* ===== רספונסיבי למובייל ===== */
+@media (max-width: 768px) {
+  .main .block-container {
+    max-width: 260px !important;
+    padding: 15px 8px !important;
+  }
+  
+  .auth-header {
+    padding: 15px 15px 25px 15px !important;
+    max-width: 240px !important;
+  }
+  
+  .auth-title {
+    font-size: 15px !important;
+  }
+  
+  .auth-icon {
+    width: 35px !important;
+    height: 35px !important;
+    font-size: 14px !important;
+  }
+  
+  .guest-meta {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+  
+  .stSidebar {
+    width: 280px !important;
+  }
+  
+  .stSidebar.collapsed {
+    width: 50px !important;
+  }
+  
+  .sidebar-toggle {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 10px !important;
+  }
+}
+
+/* ===== Selectbox ===== */
+.stSelectbox > div > div {
+  height: 28px !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+}
+
+.stSelectbox > div > div:focus-within {
+  border-color: var(--border-focus) !important;
+  box-shadow: 0 0 0 2px rgba(74,144,226,.1) !important;
 }
