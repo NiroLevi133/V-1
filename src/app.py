@@ -61,54 +61,84 @@ class AppConfig:
 # ===============================
 
 def load_css():
-    possible_paths = ["styles/", "../styles/", "./styles/", "/app/styles/", "src/../styles/"]
-
-    if st.session_state.get("auth_ok", False):
-        css_files = ["components.css", "main.css", "mobile.css", "style.css"]  # ← הוסף כאן
-    else:
-        css_files = ["components.css", "login.css", "style.css"]               # ← וגם כאן
-
-    for css_file in css_files:
-        for base_path in possible_paths:
-            css_path = os.path.join(base_path, css_file)
-            try:
-                if os.path.exists(css_path):
-                    with open(css_path, encoding="utf-8") as f:
-                        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-                        break
-            except Exception:
-                continue
-
-def debug_css_paths():
-    """בדיקת נתיבים לקבצי CSS"""
-    possible_paths = [
-        "styles/",
-        "../styles/", 
-        "./styles/",
-        "/app/styles/",
-        "src/../styles/",
+    """טוען את קובץ ה-CSS האחיד החדש"""
+    css_paths = [
+        "styles/style.css",
+        "../styles/style.css", 
+        "./styles/style.css",
+        "/app/styles/style.css",
+        "src/../styles/style.css",
     ]
     
-    css_files = ["components.css", "login.css", "main.css", "mobile.css"]
-    
-    print("🔍 בדיקת נתיבי CSS:")
-    for base_path in possible_paths:
-        print(f"\n📁 בדיקת תיקיה: {base_path}")
+    css_loaded = False
+    for css_path in css_paths:
         try:
-            if os.path.exists(base_path):
-                files_in_dir = os.listdir(base_path)
-                print(f"   קבצים בתיקיה: {files_in_dir}")
-                
-                for css_file in css_files:
-                    css_path = os.path.join(base_path, css_file)
-                    if os.path.exists(css_path):
-                        print(f"   ✅ {css_file} - קיים")
-                    else:
-                        print(f"   ❌ {css_file} - לא קיים")
-            else:
-                print(f"   ❌ התיקיה לא קיימת")
+            if os.path.exists(css_path):
+                with open(css_path, encoding="utf-8") as f:
+                    css_content = f.read()
+                    st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
+                    print(f"✅ CSS נטען בהצלחה: {css_path}")
+                    css_loaded = True
+                    break
         except Exception as e:
-            print(f"   🚨 שגיאה: {e}")
+            print(f"⚠️ שגיאה בטעינת {css_path}: {e}")
+            continue
+    
+    if not css_loaded:
+        print("❌ לא נמצא קובץ style.css")
+        # CSS בסיסי כגיבוי
+        st.markdown("""
+        <style>
+        .stApp { direction: rtl; font-family: 'Segoe UI', 'Heebo', sans-serif; }
+        .stTextInput input { height: 42px; padding: 12px; border-radius: 8px; font-size: 16px; }
+        .stButton > button { height: 48px; padding: 12px 16px; border-radius: 8px; font-size: 16px; }
+        </style>
+        """, unsafe_allow_html=True)
+        
+def render_sidebar_toggle():
+    """כפתור הסתרה/הצגת סייד בר משופר"""
+    st.markdown("""
+    <div class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="הסתר/הצג תפריט">
+        ✕
+    </div>
+    
+    <script>
+    let sidebarHidden = false;
+    
+    function toggleSidebar() {
+        const sidebar = document.querySelector('.stSidebar');
+        const toggleBtn = document.querySelector('#sidebarToggle');
+        
+        if (sidebar && toggleBtn) {
+            sidebarHidden = !sidebarHidden;
+            
+            if (sidebarHidden) {
+                // הסתר את הסייד בר
+                sidebar.classList.add('hidden');
+                toggleBtn.innerHTML = '☰';
+                toggleBtn.classList.add('show-sidebar');
+                toggleBtn.style.right = '15px';
+                toggleBtn.title = 'הצג תפריט';
+            } else {
+                // הצג את הסייד בר
+                sidebar.classList.remove('hidden');
+                toggleBtn.innerHTML = '✕';
+                toggleBtn.classList.remove('show-sidebar');
+                toggleBtn.style.right = '15px';
+                toggleBtn.title = 'הסתר תפריט';
+            }
+        }
+    }
+    
+    // אתחול כפתור
+    document.addEventListener('DOMContentLoaded', function() {
+        const toggleBtn = document.querySelector('#sidebarToggle');
+        if (toggleBtn && !sidebarHidden) {
+            toggleBtn.innerHTML = '✕';
+        }
+    });
+    </script>
+    """, unsafe_allow_html=True)
 
 # ===============================
 # פונקציות עזר
@@ -249,6 +279,16 @@ def auth_flow() -> bool:
                 force_rerun()
 
     return False
+
+if st.session_state.get("auth_ok", False):
+    st.markdown("""
+    <script>
+    document.body.classList.add('auth-completed');
+    document.querySelector('.stApp').classList.add('main-app');
+    </script>
+    """, unsafe_allow_html=True)
+    
+    render_sidebar_toggle()
 
 # ===============================
 # מדריך הורדת קבצים
@@ -493,6 +533,10 @@ load_css()
 # בדיקת אימות
 if not auth_flow():
     st.stop()
+    
+# מוסיף את כפתור הסייד בר רק אחרי האימות
+if st.session_state.get("auth_ok", False):
+    render_sidebar_toggle()
 
 # ===============================
 # מערכת ראשית
@@ -515,16 +559,15 @@ show_download_guide()
 if not st.session_state.upload_confirmed:
     
     with st.sidebar:
-        st.markdown("## 📂 העלאת קבצים")
+        st.markdown('<div class="sidebar-header">📂 העלאת קבצים</div>', unsafe_allow_html=True)
         
-        # כפתור מדריך מתוקן
-        st.markdown("### 👥 קובץ אנשי קשר")
-        
-        col1, col2 = st.columns([4, 1])  # יחס רחב יותר
-        with col2:
-            if st.button("📖", key="help_contacts_sidebar", help="מדריך הורדת קבצים", use_container_width=True):
-                st.session_state.show_guide = True
-                force_rerun()
+        # קובץ אנשי קשר
+        st.markdown("""
+        <div class="file-row">
+            <span class="file-label">👥 קובץ אנשי קשר</span>
+            <button class="guide-btn" onclick="document.querySelector('[key=help_contacts_sidebar]').click()">📖</button>
+        </div>
+        """, unsafe_allow_html=True)
         
         contacts_file = st.file_uploader(
             "קובץ אנשי קשר", 
@@ -533,14 +576,25 @@ if not st.session_state.upload_confirmed:
             label_visibility="collapsed"
         )
         
-        # Debug - בדוק אם יש קובץ
+        # סימון קובץ אנשי קשר כהועלה
         if contacts_file:
-            st.success(f"✅ קובץ אנשי קשר: {contacts_file.name}")
-            print(f"📁 קובץ אנשי קשר נבחר: {contacts_file.name}")
+            st.markdown("""
+            <div class="file-uploaded">
+                <div style="font-size: 10px; color: #059669; font-weight: 600;">
+                    ✅ קובץ אנשי קשר נטען בהצלחה
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
-        st.markdown("### 🎉 קובץ מוזמנים")
+        st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
         
-        # העלאת קובץ מוזמנים
+        # קובץ מוזמנים
+        st.markdown("""
+        <div class="file-row">
+            <span class="file-label">🎉 קובץ מוזמנים</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
         guests_file = st.file_uploader(
             "קובץ מוזמנים", 
             type=["xlsx", "xls", "csv"], 
@@ -548,55 +602,90 @@ if not st.session_state.upload_confirmed:
             label_visibility="collapsed"
         )
         
-        # Debug - בדוק אם יש קובץ
+        # סימון קובץ מוזמנים כהועלה
         if guests_file:
-            st.success(f"✅ קובץ מוזמנים: {guests_file.name}")
-            print(f"📁 קובץ מוזמנים נבחר: {guests_file.name}")
+            st.markdown("""
+            <div class="file-uploaded">
+                <div style="font-size: 10px; color: #059669; font-weight: 600;">
+                    ✅ קובץ מוזמנים נטען בהצלחה
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown('<div style="height: 15px;"></div>', unsafe_allow_html=True)
 
-        # כפתור אישור - עם debug
+        # כפתור אישור - רק אם שני הקבצים קיימים
         files_ready = bool(contacts_file and guests_file)
-        print(f"🔍 קבצים מוכנים: {files_ready} (contacts: {bool(contacts_file)}, guests: {bool(guests_file)})")
         
         if st.button("✅ אשר קבצים", 
                     disabled=not files_ready, 
                     type="primary",
                     key="confirm_files_btn"):
             
-            print("🚀 לחיצה על כפתור אישור קבצים!")
-            
             try:
                 with st.spinner("⏳ טוען קבצים..."):
-                    print("📊 מתחיל לטעון קבצים...")
-                    
                     # טעינת קבצים
                     st.session_state.contacts = load_excel(contacts_file)
-                    print(f"✅ קובץ אנשי קשר נטען: {len(st.session_state.contacts)} שורות")
-                    
                     st.session_state.guests = load_excel(guests_file)
-                    print(f"✅ קובץ מוזמנים נטען: {len(st.session_state.guests)} שורות")
                     
                     # חישוב ציונים
-                    print("🧮 מחשב ציוני התאמה...")
                     st.session_state.guests["best_score"] = compute_best_scores(
                         st.session_state.guests, st.session_state.contacts
                     )
-                    print("✅ ציוני התאמה חושבו")
                 
                 # סימון שהקבצים אושרו
                 st.session_state.upload_confirmed = True
                 st.session_state.show_guide = False
                 
-                print("🎉 קבצים אושרו בהצלחה!")
                 st.success("🎉 קבצים נטענו בהצלחה!")
-                
-                # המתן קצר ורענן
                 time.sleep(1)
                 force_rerun()
                 
             except Exception as e:
-                print(f"🚨 שגיאה בטעינת קבצים: {str(e)}")
                 st.error(f"שגיאה בטעינת קבצים: {str(e)}")
                 st.session_state.upload_confirmed = False
+
+        # שאר הפקדים של הסייד בר (פילטרים, הורדות וכו') רק אחרי העלאת קבצים
+        if st.session_state.get('upload_confirmed', False):
+            st.markdown('<div style="height: 20px; border-top: 1px solid #e5e7eb; margin: 15px 0;"></div>', unsafe_allow_html=True)
+            
+            # פילטרים
+            st.checkbox("רק חסרי מספר", key="filter_no", on_change=lambda: st.session_state.update(idx=0))
+
+            filtered_df = st.session_state.guests.copy()
+            if st.session_state.get("filter_no"):
+                filtered_df = filtered_df[filtered_df[PHONE_COL].str.strip() == ""]
+
+            all_sides = st.session_state.guests[SIDE_COL].dropna().unique().tolist()
+            all_groups = st.session_state.guests[GROUP_COL].dropna().unique().tolist()
+
+            st.multiselect("סנן לפי צד", options=all_sides, key="filter_sides")
+            st.multiselect("סנן לפי קבוצה", options=all_groups, key="filter_groups")
+
+            if st.session_state.get("filter_sides"):
+                filtered_df = filtered_df[filtered_df[SIDE_COL].isin(st.session_state.filter_sides)]
+            if st.session_state.get("filter_groups"):
+                filtered_df = filtered_df[filtered_df[GROUP_COL].isin(st.session_state.filter_groups)]
+
+            filtered_total = len(filtered_df)
+            complete_idx = st.session_state.get("idx", 0)
+            complete_idx = min(complete_idx, filtered_total)
+
+            st.markdown(f"**{complete_idx}/{filtered_total} הושלמו**")
+            st.progress(complete_idx / filtered_total if filtered_total else 0)
+
+            st.download_button(
+                "💾 הורד Excel",
+                data=to_buf(filtered_df),
+                file_name="רשימת_מסוננים.xlsx",
+                use_container_width=True,
+            )
+
+        # כפתור מדריך נסתר
+        if st.button("📖", key="help_contacts_sidebar", help="מדריך הורדת קבצים", 
+                    type="secondary"):
+            st.session_state.show_guide = True
+            force_rerun()
     
 
 # אם לא הושלמה העלאת קבצים - עצור כאן
