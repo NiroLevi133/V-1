@@ -1,0 +1,10 @@
+streamlit
+pandas
+openpyxl
+requests
+unidecode
+rapidfuzz
+gspread
+google-auth
+google-auth-oauthlib
+python-dotenv
