@@ -1,0 +1,12 @@
+/* === מובייל – מינימלי RTL === */
+@media (max-width: 768px) {
+    .main .block-container {
+        padding: 8px;
+    }
+    .auth-title {
+        font-size: 12px;
+    }
+    div[data-testid="stTextInput"] input {
+        font-size: 9px !important;
+    }
+}
